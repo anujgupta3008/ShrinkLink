@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # Database Persistence Tier
+  postgres:
+    image: postgres:15-alpine
+    container_name: url_shortener_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: url_shortener
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d url_shortener"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Distributed Caching & Rate Limiting Tier
+  redis:
+    image: redis:7-alpine
+    container_name: url_shortener_cache
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Stateless Go Backend Instance 1
+  app-1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: url_shortener_app_1
+    environment:
+      PORT: "8080"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: url_shortener
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      BASE_URL: "http://localhost"  # Routes through Nginx load balancer
+      GIN_MODE: release
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Stateless Go Backend Instance 2 (Horizontal Scaling replication)
+  app-2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: url_shortener_app_2
+    environment:
+      PORT: "8080"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: url_shortener
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      BASE_URL: "http://localhost"
+      GIN_MODE: release
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Entrypoint Load Balancer & Static File Router
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: url_shortener_lb
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./web:/usr/share/nginx/html:ro
+    depends_on:
+      - app-1
+      - app-2
+
+volumes:
+  pgdata:

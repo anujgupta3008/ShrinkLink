@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Distributed URL Shortener - Analytics & Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Chart.js for premium visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="glass-bg-container">
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+  </div>
+
+  <header class="app-header">
+    <div class="container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+          </svg>
+        </div>
+        <h1>Shrink<span>Link</span></h1>
+      </div>
+      <div class="status-badge">
+        <span class="status-indicator"></span>
+        <span class="status-text">Distributed System Online</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main container">
+    <!-- Shortener Form Card -->
+    <section class="card shortener-card">
+      <h2>Shorten a Long URL</h2>
+      <p class="subtitle">Instantly generate compressed, high-availability redirects with real-time analytics.</p>
+      
+      <form id="shorten-form">
+        <div class="input-group">
+          <label for="long-url">Destination URL</label>
+          <div class="input-with-icon">
+            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+            <input type="url" id="long-url" placeholder="https://example.com/very/long/path/to/resource" required>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="input-group">
+            <label for="custom-alias">Custom Alias <span class="optional">(Optional)</span></label>
+            <div class="input-with-icon">
+              <span class="prefix">/</span>
+              <input type="text" id="custom-alias" placeholder="my-promo" max="10">
+            </div>
+          </div>
+          
+          <div class="input-group">
+            <label for="expiry-seconds">Expires In <span class="optional">(Optional)</span></label>
+            <select id="expiry-seconds">
+              <option value="">Never Expires</option>
+              <option value="300">5 Minutes</option>
+              <option value="3600">1 Hour</option>
+              <option value="86400">1 Day</option>
+              <option value="604800">1 Week</option>
+              <option value="2592000">30 Days</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="btn-submit">
+          <span>Generate Short URL</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+      </form>
+
+      <div id="result-box" class="result-box hidden">
+        <div class="result-label">Shortened URL Generated!</div>
+        <div class="result-display">
+          <input type="text" id="result-url" readonly>
+          <button class="btn btn-secondary btn-copy" id="btn-copy">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Copy</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- URL History & Dashboard List -->
+    <section class="card history-card">
+      <div class="card-header">
+        <h2>Active Short Codes</h2>
+        <button class="btn btn-secondary btn-small" id="btn-refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          Refresh
+        </button>
+      </div>
+      
+      <div class="table-container">
+        <table id="history-table">
+          <thead>
+            <tr>
+              <th>Short Link</th>
+              <th>Destination URL</th>
+              <th>Created At</th>
+              <th>Status / Expiry</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="history-list">
+            <!-- Dynamically populated -->
+            <tr class="empty-state">
+              <td colspan="5">No shortened URLs stored locally in session yet. Create one above!</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Real-Time Analytics Dashboard Modal -->
+  <div class="modal-overlay hidden" id="analytics-modal">
+    <div class="modal-container">
+      <div class="modal-header">
+        <div>
+          <h2 id="modal-title">Analytics for: /shortcode</h2>
+          <p class="subtitle" id="modal-subtitle">Real-time distributed metrics gathered from Redis & Postgres</p>
+        </div>
+        <button class="btn-close" id="btn-close-modal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="modal-body">
+        <!-- Stats Summary Counters -->
+        <div class="stats-counter-grid">
+          <div class="stat-counter-card">
+            <div class="stat-icon click-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Total Clicks</span>
+              <span class="stat-value" id="stat-total-clicks">0</span>
+            </div>
+          </div>
+
+          <div class="stat-counter-card">
+            <div class="stat-icon url-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Target Destination</span>
+              <span class="stat-value text-scroll" id="stat-target-url">-</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts Layout Grid -->
+        <div class="charts-grid">
+          <!-- Click Over Time -->
+          <div class="chart-card span-2">
+            <h3>Clicks Over Time (Last 7 Days)</h3>
+            <div class="chart-wrapper">
+              <canvas id="chart-clicks-time"></canvas>
+            </div>
+          </div>
+
+          <!-- Referral Sources -->
+          <div class="chart-card">
+            <h3>Top Referrers</h3>
+            <div class="chart-wrapper">
+              <canvas id="chart-referrers"></canvas>
+            </div>
+          </div>
+
+          <!-- Geographic Countries -->
+          <div class="chart-card">
+            <h3>Geographic Distribution</h3>
+            <div class="chart-wrapper">
+              <canvas id="chart-countries"></canvas>
+            </div>
+          </div>
+
+          <!-- Browser Breakdown -->
+          <div class="chart-card">
+            <h3>Browser Distribution</h3>
+            <div class="chart-wrapper">
+              <canvas id="chart-browsers"></canvas>
+            </div>
+          </div>
+
+          <!-- OS Breakdown -->
+          <div class="chart-card">
+            <h3>Operating Systems</h3>
+            <div class="chart-wrapper">
+              <canvas id="chart-os"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="app-footer container">
+    <p>Powered by stateless Go microservices, Redis caching-aside, and PostgreSQL persistence.</p>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

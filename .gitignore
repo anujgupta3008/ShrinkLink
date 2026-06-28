@@ -1,0 +1,32 @@
+# Binaries and executables
+backend/main
+backend/backend
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Dependency directories
+backend/vendor/
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Database data
+pgdata/
+
+# IDE and agent settings
+.idea/
+.vscode/
+.gemini/
+antigravity-ide/
+*.tmp
