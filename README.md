@@ -108,3 +108,13 @@ cd backend
 go test ./...
 ```
 This runs the unit tests, verifying the correctness of the Base62 encoding and decoding boundaries.
+
+---
+
+## 📈 System Scaling and Future Extensions
+
+To support billions of redirection requests, the following improvements can be integrated:
+1. **Message Broker (Kafka/RabbitMQ)**: Replace the Redis list queue with Apache Kafka for highly reliable, partitions-based analytics logging.
+2. **Sonyflake ID Generator**: Use Sonyflake (distributed coordinate-free ID generator) instead of the Range Allocator if Redis becomes a single point of range failure.
+3. **GeoIP MaxMind Reader**: Integrate an offline MaxMind GeoLite2 country database instead of standard simulated mapping for robust real-world visitor locations.
+
