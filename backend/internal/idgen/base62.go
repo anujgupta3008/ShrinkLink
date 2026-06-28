@@ -17,13 +17,14 @@ func Encode(number int64) string {
 	}
 
 	var sb strings.Builder
+	// Process digits by repeatedly dividing by 62 and mapping the remainder
 	for number > 0 {
 		rem := number % base
 		sb.WriteByte(alphabet[rem])
 		number = number / base
 	}
 
-	// Reverse the bytes
+	// Reverse the accumulated bytes as division extracts digits in reverse order
 	bytes := []byte(sb.String())
 	for i, j := 0, len(bytes)-1; i < j; i, j = i+1, j-1 {
 		bytes[i], bytes[j] = bytes[j], bytes[i]
@@ -34,6 +35,7 @@ func Encode(number int64) string {
 // Decode converts a Base62 string back to a 64-bit integer.
 func Decode(code string) (int64, error) {
 	var number int64
+	// Reconstruct the 64-bit integer by multiplying by 62 and adding index values
 	for i := 0; i < len(code); i++ {
 		pos := strings.IndexByte(alphabet, code[i])
 		if pos == -1 {
