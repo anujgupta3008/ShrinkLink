@@ -4,19 +4,20 @@ import (
 	"os"
 )
 
+// Config stores all configuration parameters loaded from environment variables.
 type Config struct {
-	Port          string
-	DBHost        string
-	DBPort        string
-	DBUser        string
-	DBPassword    string
-	DBName        string
-	DBSSLMode     string
-	RedisHost     string
-	RedisPort     string
-	RedisPassword string
-	RedisDB       string
-	BaseURL       string
+	Port          string // Port is the HTTP port the backend serves on.
+	DBHost        string // DBHost is the host URL for the PostgreSQL instance.
+	DBPort        string // DBPort is the connection port for PostgreSQL.
+	DBUser        string // DBUser is the database username.
+	DBPassword    string // DBPassword is the database connection password.
+	DBName        string // DBName is the specific database name.
+	DBSSLMode     string // DBSSLMode defines the connection security type.
+	RedisHost     string // RedisHost is the host URL for the Redis server.
+	RedisPort     string // RedisPort is the server port for Redis.
+	RedisPassword string // RedisPassword is the auth password for Redis.
+	RedisDB       string // RedisDB is the database number to target in Redis.
+	BaseURL       string // BaseURL is the prefix used to construct the short link.
 }
 
 func LoadConfig() *Config {
