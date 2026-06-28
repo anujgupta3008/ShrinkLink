@@ -1,3 +1,11 @@
+/* 
+  ShrinkLink Glassmorphism Design System
+  --------------------------------------
+  - Background: Deep violet-black space palette with floating blurred orbs.
+  - Cards: Semi-transparent container layout with fine border definition and backdrop filters.
+  - Interactive Accents: Neon gradient highlights on focus, submit buttons, and link hovers.
+*/
+
 /* Theme Variables */
 :root {
   --bg-color: #08070d;
