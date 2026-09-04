@@ -27,6 +27,4 @@ pgdata/
 # IDE and agent settings
 .idea/
 .vscode/
-.gemini/
-antigravity-ide/
 *.tmp
