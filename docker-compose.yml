@@ -13,6 +13,7 @@ services:
       POSTGRES_DB: url_shortener
     volumes:
       - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d url_shortener"]
       interval: 5s
@@ -25,6 +26,7 @@ services:
     container_name: url_shortener_cache
     ports:
       - "6379:6379"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -49,6 +51,7 @@ services:
       REDIS_PORT: "6379"
       BASE_URL: "http://localhost"  # Routes through Nginx load balancer
       GIN_MODE: release
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +76,7 @@ services:
       REDIS_PORT: "6379"
       BASE_URL: "http://localhost"
       GIN_MODE: release
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,6 +92,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./web:/usr/share/nginx/html:ro
+    restart: unless-stopped
     depends_on:
       - app-1
       - app-2
