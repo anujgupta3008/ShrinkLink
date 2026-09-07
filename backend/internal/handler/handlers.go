@@ -332,6 +332,46 @@ func (h *Handler) GetAnalytics(c *gin.Context) {
 	})
 }
 
+// GetAllURLs returns all shortened URLs from the database, ordered by creation date.
+func (h *Handler) GetAllURLs(c *gin.Context) {
+	rows, err := h.db.Query(`
+		SELECT short_code, long_url, created_at, expires_at
+		FROM urls
+		ORDER BY created_at DESC
+		LIMIT 100
+	`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query URLs"})
+		return
+	}
+	defer rows.Close()
+
+	type URLEntry struct {
+		ShortCode string     `json:"short_code"`
+		ShortURL  string     `json:"short_url"`
+		LongURL   string     `json:"long_url"`
+		CreatedAt time.Time  `json:"created_at"`
+		ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	}
+
+	var urls []URLEntry
+	for rows.Next() {
+		var entry URLEntry
+		if err := rows.Scan(&entry.ShortCode, &entry.LongURL, &entry.CreatedAt, &entry.ExpiresAt); err != nil {
+			log.Printf("Error scanning URL row: %v", err)
+			continue
+		}
+		entry.ShortURL = fmt.Sprintf("%s/%s", h.baseURL, entry.ShortCode)
+		urls = append(urls, entry)
+	}
+
+	if urls == nil {
+		urls = []URLEntry{}
+	}
+
+	c.JSON(http.StatusOK, urls)
+}
+
 // Basic helper to extract hostname from referrer URL
 func cleanReferrer(ref string) string {
 	parts := regexp.MustCompile(`https?://([^/]+)`).FindStringSubmatch(ref)

@@ -751,3 +751,65 @@ tr:hover td {
   border-top: 1px solid var(--panel-border);
   margin-top: 40px;
 }
+
+/* ── Modal Loading Spinner ─────────────────────────────── */
+.modal-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.modal-loading.hidden { display: none; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(168, 85, 247, 0.15);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ── Modal Error Panel ─────────────────────────────────── */
+.modal-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 50px 20px;
+  text-align: center;
+  color: var(--error);
+}
+
+.modal-error.hidden { display: none; }
+
+.modal-error svg {
+  width: 40px;
+  height: 40px;
+  stroke: var(--error);
+  opacity: 0.8;
+}
+
+.modal-error p {
+  color: var(--text-muted);
+  font-size: 14px;
+  max-width: 320px;
+}
+
+/* ── History Subtitle ──────────────────────────────────── */
+.card-header .subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}

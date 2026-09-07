@@ -82,6 +82,7 @@ func main() {
 	{
 		api.POST("/shorten", h.Shorten)
 		api.GET("/analytics/:code", h.GetAnalytics)
+		api.GET("/urls", h.GetAllURLs)
 	}
 
 	// Serve static files if web directory is present (for local running without Nginx)

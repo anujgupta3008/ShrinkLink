@@ -31,7 +31,7 @@ const statTargetUrl = document.getElementById('stat-target-url');
 
 // App Initialization
 document.addEventListener('DOMContentLoaded', () => {
-  renderHistory();
+  fetchAllURLs(); // Fetch from DB on load instead of only relying on localStorage
 
   // Shorten URL Form Submission
   shortenForm.addEventListener('submit', handleShorten);
@@ -39,8 +39,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Copy to Clipboard Action
   copyBtn.addEventListener('click', copyResultUrl);
 
-  // Refresh History
-  refreshBtn.addEventListener('click', renderHistory);
+  // Refresh History — re-fetch from DB
+  refreshBtn.addEventListener('click', fetchAllURLs);
 
   // Close Analytics Modal
   closeModalBtn.addEventListener('click', () => {
@@ -103,7 +103,7 @@ async function handleShorten(e) {
 
     // Reset Form
     shortenForm.reset();
-    renderHistory();
+    fetchAllURLs(); // Re-fetch from DB to show new URL alongside existing ones
   } catch (error) {
     alert(`Error: ${error.message}`);
   } finally {
@@ -156,6 +156,36 @@ function deleteFromHistory(shortCode) {
   renderHistory();
 }
 
+// --- DB-backed History Fetch ---
+async function fetchAllURLs() {
+  const subtitle = document.getElementById('history-subtitle');
+  subtitle.textContent = 'Loading from database...';
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/urls`);
+    if (!response.ok) throw new Error('Failed to fetch URLs');
+    const dbURLs = await response.json();
+
+    // Merge DB results into localStorage (DB is source of truth)
+    dbURLs.forEach(item => {
+      saveToHistory({
+        shortCode: item.short_code,
+        shortURL:  item.short_url,
+        longURL:   item.long_url,
+        createdAt: item.created_at,
+        expiresAt: item.expires_at || null
+      });
+    });
+
+    subtitle.textContent = `${dbURLs.length} URL${dbURLs.length !== 1 ? 's' : ''} in database`;
+  } catch (err) {
+    console.warn('Could not fetch URLs from DB, falling back to localStorage:', err);
+    subtitle.textContent = 'Showing local session history';
+  }
+
+  renderHistory();
+}
+
 // Render History Table
 function renderHistory() {
   const history = getHistory();
@@ -164,7 +194,7 @@ function renderHistory() {
   if (history.length === 0) {
     historyList.innerHTML = `
       <tr class="empty-state">
-        <td colspan="5">No shortened URLs stored locally in session yet. Create one above!</td>
+        <td colspan="5">No shortened URLs yet. Create one above!</td>
       </tr>
     `;
     return;
@@ -233,12 +263,33 @@ function renderHistory() {
   });
 }
 
+// Analytics state for retry
+let _lastAnalyticsCode = null;
+let _lastAnalyticsLongUrl = null;
+
 // Show Analytics Dashboard
 async function showAnalytics(code, longUrl) {
+  _lastAnalyticsCode = code;
+  _lastAnalyticsLongUrl = longUrl;
+
+  const modalLoading = document.getElementById('modal-loading');
+  const modalError   = document.getElementById('modal-error');
+  const modalContent = document.getElementById('modal-content');
+  const modalErrorMsg = document.getElementById('modal-error-msg');
+  const retryBtn     = document.getElementById('btn-retry');
+
+  // Wire retry button (idempotent)
+  retryBtn.onclick = () => showAnalytics(_lastAnalyticsCode, _lastAnalyticsLongUrl);
+
+  // Show modal in loading state
   modalTitle.textContent = `Analytics for: /${code}`;
   statTargetUrl.textContent = longUrl;
   statTotalClicks.textContent = '...';
-  
+  modalLoading.classList.remove('hidden');
+  modalError.classList.add('hidden');
+  modalContent.classList.add('hidden');
+  destroyAllCharts();
+
   analyticsModal.classList.remove('hidden');
 
   try {
@@ -250,7 +301,11 @@ async function showAnalytics(code, longUrl) {
     }
 
     statTotalClicks.textContent = data.total_clicks;
-    
+
+    // Show content, hide spinner
+    modalLoading.classList.add('hidden');
+    modalContent.classList.remove('hidden');
+
     // Render Charts
     renderClicksTimeChart(data.clicks_over_time || []);
     renderPieChart('chart-referrers', 'referrers', data.referrers || []);
@@ -259,8 +314,10 @@ async function showAnalytics(code, longUrl) {
     renderHorizontalBarChart('chart-os', 'os', data.os || []);
 
   } catch (error) {
-    alert(`Error fetching analytics: ${error.message}`);
-    analyticsModal.classList.add('hidden');
+    // Show error panel inside modal instead of blocking alert()
+    modalLoading.classList.add('hidden');
+    modalErrorMsg.textContent = error.message || 'Failed to load analytics.';
+    modalError.classList.remove('hidden');
   }
 }
 

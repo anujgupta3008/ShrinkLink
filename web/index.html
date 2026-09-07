@@ -103,7 +103,10 @@
     <!-- URL History & Dashboard List -->
     <section class="card history-card">
       <div class="card-header">
-        <h2>Active Short Codes</h2>
+        <div>
+          <h2>Active Short Codes</h2>
+          <p class="subtitle" id="history-subtitle">Loading from database...</p>
+        </div>
         <button class="btn btn-secondary btn-small" id="btn-refresh">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="23 4 23 10 17 10"></polyline>
@@ -153,6 +156,25 @@
       </div>
       
       <div class="modal-body">
+        <!-- Loading Spinner (shown while fetching analytics) -->
+        <div class="modal-loading" id="modal-loading">
+          <div class="spinner"></div>
+          <p>Loading analytics...</p>
+        </div>
+
+        <!-- Error Panel (shown if analytics fetch fails) -->
+        <div class="modal-error hidden" id="modal-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <p id="modal-error-msg">Failed to load analytics.</p>
+          <button class="btn btn-secondary btn-small" id="btn-retry">Retry</button>
+        </div>
+
+        <!-- Analytics Content (hidden while loading) -->
+        <div id="modal-content" class="hidden">
         <!-- Stats Summary Counters -->
         <div class="stats-counter-grid">
           <div class="stat-counter-card">
@@ -226,6 +248,7 @@
             </div>
           </div>
         </div>
+        </div><!-- end #modal-content -->
       </div>
     </div>
   </div>
