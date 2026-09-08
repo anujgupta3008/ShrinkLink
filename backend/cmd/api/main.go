@@ -57,7 +57,9 @@ func main() {
 
 	// 6. Start Background Analytics Worker
 	workerCtx, workerCancel := context.WithCancel(context.Background())
-	defer workerCancel()
+	// NOTE: workerCancel is NOT deferred here — it must be called explicitly after
+	// server.Shutdown() returns, so in-flight requests finish queuing analytics
+	// events before the worker stops consuming them.
 
 	analyticsWorker := worker.NewAnalyticsWorker(db, rdb, "queue:analytics", 50, 2*time.Second)
 	go analyticsWorker.Start(workerCtx)
@@ -127,11 +129,14 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
+	log.Println("HTTP server stopped. Draining analytics worker...")
 
-	// Stop analytics worker
+	// Cancel the worker now that the HTTP server is fully stopped —
+	// no new analytics events can be enqueued after this point.
 	workerCancel()
-	// Wait a moment for worker to flush
-	time.Sleep(1 * time.Second)
+
+	// Give the worker up to 3 seconds to flush its current batch to PostgreSQL.
+	time.Sleep(3 * time.Second)
 
 	log.Println("Server exiting")
 }
