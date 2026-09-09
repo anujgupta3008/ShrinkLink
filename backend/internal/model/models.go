@@ -33,7 +33,10 @@ type AnalyticsRecord struct {
 
 type ShortenRequest struct {
 	LongURL   string `json:"long_url" binding:"required,url"`
-	Alias     string `json:"alias,omitempty" binding:"omitempty,alphanum,max=10"`
+	// Alias binding uses only max=10 here. Character validation (a-zA-Z0-9_-)
+	// is done by aliasRegex in handler/handlers.go, since the `alphanum` tag
+	// incorrectly rejects valid characters like dashes and underscores.
+	Alias     string `json:"alias,omitempty" binding:"omitempty,max=10"`
 	ExpiresIn int    `json:"expires_in,omitempty"` // Expiration in seconds
 }
 

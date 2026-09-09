@@ -8,6 +8,11 @@ import (
 	"url-shortener/internal/redis"
 )
 
+// minIDOffset ensures auto-generated IDs never produce very short codes.
+// Base62(100000) = "q0U" (3 chars). IDs above this produce codes of 4+ characters.
+// This prevents codes like "1", "2", or "z" which look like accidents.
+const minIDOffset int64 = 100_000
+
 type Allocator struct {
 	redisClient *redis.Client
 	rangeSize   int64
@@ -59,6 +64,16 @@ func (a *Allocator) fetchNextBlock(ctx context.Context) error {
 	newMax, err := a.redisClient.IncrBy(ctx, "global_url_id_counter", a.rangeSize).Result()
 	if err != nil {
 		return errors.New("failed to fetch next ID range from Redis: " + err.Error())
+	}
+
+	// If this is the very first allocation (counter started below the minimum),
+	// jump the counter up to minIDOffset so all generated codes are at least
+	// 4 characters long. SET is only called once in the lifetime of the cluster.
+	if newMax < minIDOffset {
+		if err := a.redisClient.Set(ctx, "global_url_id_counter", minIDOffset, 0).Err(); err != nil {
+			return errors.New("failed to set minimum ID offset in Redis: " + err.Error())
+		}
+		newMax = minIDOffset
 	}
 
 	atomic.StoreInt64(&a.currentID, newMax-a.rangeSize)
