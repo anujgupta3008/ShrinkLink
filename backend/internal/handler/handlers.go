@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -190,8 +191,10 @@ func (h *Handler) queueAnalytics(code string, c *gin.Context) {
 }
 
 // GetAnalytics aggregates and returns analytics for a short code.
+// All 5 breakdown queries run concurrently to minimise response latency.
 func (h *Handler) GetAnalytics(c *gin.Context) {
 	code := c.Param("code")
+	ctx := c.Request.Context()
 
 	// Verify short URL exists
 	var dummy int
@@ -204,121 +207,181 @@ func (h *Handler) GetAnalytics(c *gin.Context) {
 		return
 	}
 
-	// 1. Total Clicks
-	var totalClicks int
-	err = h.db.QueryRow("SELECT COUNT(*) FROM analytics WHERE short_code = $1", code).Scan(&totalClicks)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query total clicks"})
-		return
-	}
+	// Collect results from concurrent queries
+	var (
+		wg             sync.WaitGroup
+		mu             sync.Mutex
+		firstErr       error
+		totalClicks    int
+		clicksOverTime []model.ClickStats
+		referrers      []model.StatBreakdown
+		browsers       []model.StatBreakdown
+		osList         []model.StatBreakdown
+		countries      []model.StatBreakdown
+	)
 
-	// 2. Clicks over time (last 7 days, grouped by day/hour depending on data density)
-	// We'll group by hour/day
-	rows, err := h.db.Query(`
-		SELECT TO_CHAR(click_time, 'YYYY-MM-DD HH24:00') as period, COUNT(*) as clicks
-		FROM analytics
-		WHERE short_code = $1 AND click_time >= NOW() - INTERVAL '7 days'
-		GROUP BY period
-		ORDER BY period ASC
-	`, code)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query clicks over time"})
-		return
-	}
-	defer rows.Close()
-
-	var clicksOverTime []model.ClickStats
-	for rows.Next() {
-		var cs model.ClickStats
-		if err := rows.Scan(&cs.Period, &cs.Clicks); err != nil {
-			log.Printf("Error scanning click stats: %v", err)
-			continue
+	setErr := func(e error) {
+		mu.Lock()
+		if firstErr == nil {
+			firstErr = e
 		}
-		clicksOverTime = append(clicksOverTime, cs)
+		mu.Unlock()
 	}
 
-	// 3. Referrers breakdown
-	referrerRows, err := h.db.Query(`
-		SELECT COALESCE(NULLIF(referrer, ''), 'Direct') as name, COUNT(*) as count
-		FROM analytics
-		WHERE short_code = $1
-		GROUP BY name
-		ORDER BY count DESC
-		LIMIT 5
-	`, code)
-	if err == nil {
-		defer referrerRows.Close()
-	}
-	var referrers []model.StatBreakdown
-	for referrerRows != nil && referrerRows.Next() {
-		var sb model.StatBreakdown
-		if err := referrerRows.Scan(&sb.Name, &sb.Count); err == nil {
-			// Clean up full referrer URL to domain name for cleaner charts
-			if strings.HasPrefix(sb.Name, "http") {
-				sb.Name = cleanReferrer(sb.Name)
+	// Query 1: Total clicks
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var n int
+		if e := h.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM analytics WHERE short_code = $1", code).Scan(&n); e != nil {
+			setErr(e)
+			return
+		}
+		mu.Lock()
+		totalClicks = n
+		mu.Unlock()
+	}()
+
+	// Query 2: Clicks over time (last 7 days, grouped by hour)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		rows, e := h.db.QueryContext(ctx, `
+			SELECT TO_CHAR(click_time, 'YYYY-MM-DD HH24:00') as period, COUNT(*) as clicks
+			FROM analytics
+			WHERE short_code = $1 AND click_time >= NOW() - INTERVAL '7 days'
+			GROUP BY period
+			ORDER BY period ASC
+		`, code)
+		if e != nil {
+			setErr(e)
+			return
+		}
+		defer rows.Close()
+		var result []model.ClickStats
+		for rows.Next() {
+			var cs model.ClickStats
+			if e := rows.Scan(&cs.Period, &cs.Clicks); e == nil {
+				result = append(result, cs)
 			}
-			referrers = append(referrers, sb)
 		}
-	}
+		mu.Lock()
+		clicksOverTime = result
+		mu.Unlock()
+	}()
 
-	// 4. Browsers breakdown
-	browserRows, err := h.db.Query(`
-		SELECT COALESCE(NULLIF(browser, ''), 'Unknown') as name, COUNT(*) as count
-		FROM analytics
-		WHERE short_code = $1
-		GROUP BY name
-		ORDER BY count DESC
-		LIMIT 5
-	`, code)
-	if err == nil {
-		defer browserRows.Close()
-	}
-	var browsers []model.StatBreakdown
-	for browserRows != nil && browserRows.Next() {
-		var sb model.StatBreakdown
-		if err := browserRows.Scan(&sb.Name, &sb.Count); err == nil {
-			browsers = append(browsers, sb)
+	// Query 3: Top referrers
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		rows, e := h.db.QueryContext(ctx, `
+			SELECT COALESCE(NULLIF(referrer, ''), 'Direct') as name, COUNT(*) as count
+			FROM analytics WHERE short_code = $1
+			GROUP BY name ORDER BY count DESC LIMIT 5
+		`, code)
+		if e != nil {
+			setErr(e)
+			return
 		}
-	}
+		defer rows.Close()
+		var result []model.StatBreakdown
+		for rows.Next() {
+			var sb model.StatBreakdown
+			if e := rows.Scan(&sb.Name, &sb.Count); e == nil {
+				if strings.HasPrefix(sb.Name, "http") {
+					sb.Name = cleanReferrer(sb.Name)
+				}
+				result = append(result, sb)
+			}
+		}
+		mu.Lock()
+		referrers = result
+		mu.Unlock()
+	}()
 
-	// 5. OS breakdown
-	osRows, err := h.db.Query(`
-		SELECT COALESCE(NULLIF(os, ''), 'Unknown') as name, COUNT(*) as count
-		FROM analytics
-		WHERE short_code = $1
-		GROUP BY name
-		ORDER BY count DESC
-		LIMIT 5
-	`, code)
-	if err == nil {
-		defer osRows.Close()
-	}
-	var osList []model.StatBreakdown
-	for osRows != nil && osRows.Next() {
-		var sb model.StatBreakdown
-		if err := osRows.Scan(&sb.Name, &sb.Count); err == nil {
-			osList = append(osList, sb)
+	// Query 4: Browser breakdown
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		rows, e := h.db.QueryContext(ctx, `
+			SELECT COALESCE(NULLIF(browser, ''), 'Unknown') as name, COUNT(*) as count
+			FROM analytics WHERE short_code = $1
+			GROUP BY name ORDER BY count DESC LIMIT 5
+		`, code)
+		if e != nil {
+			setErr(e)
+			return
 		}
-	}
+		defer rows.Close()
+		var result []model.StatBreakdown
+		for rows.Next() {
+			var sb model.StatBreakdown
+			if e := rows.Scan(&sb.Name, &sb.Count); e == nil {
+				result = append(result, sb)
+			}
+		}
+		mu.Lock()
+		browsers = result
+		mu.Unlock()
+	}()
 
-	// 6. Countries breakdown
-	countryRows, err := h.db.Query(`
-		SELECT COALESCE(NULLIF(country, ''), 'Unknown') as name, COUNT(*) as count
-		FROM analytics
-		WHERE short_code = $1
-		GROUP BY name
-		ORDER BY count DESC
-		LIMIT 5
-	`, code)
-	if err == nil {
-		defer countryRows.Close()
-	}
-	var countries []model.StatBreakdown
-	for countryRows != nil && countryRows.Next() {
-		var sb model.StatBreakdown
-		if err := countryRows.Scan(&sb.Name, &sb.Count); err == nil {
-			countries = append(countries, sb)
+	// Query 5: OS breakdown
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		rows, e := h.db.QueryContext(ctx, `
+			SELECT COALESCE(NULLIF(os, ''), 'Unknown') as name, COUNT(*) as count
+			FROM analytics WHERE short_code = $1
+			GROUP BY name ORDER BY count DESC LIMIT 5
+		`, code)
+		if e != nil {
+			setErr(e)
+			return
 		}
+		defer rows.Close()
+		var result []model.StatBreakdown
+		for rows.Next() {
+			var sb model.StatBreakdown
+			if e := rows.Scan(&sb.Name, &sb.Count); e == nil {
+				result = append(result, sb)
+			}
+		}
+		mu.Lock()
+		osList = result
+		mu.Unlock()
+	}()
+
+	// Query 6: Country breakdown
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		rows, e := h.db.QueryContext(ctx, `
+			SELECT COALESCE(NULLIF(country, ''), 'Unknown') as name, COUNT(*) as count
+			FROM analytics WHERE short_code = $1
+			GROUP BY name ORDER BY count DESC LIMIT 5
+		`, code)
+		if e != nil {
+			setErr(e)
+			return
+		}
+		defer rows.Close()
+		var result []model.StatBreakdown
+		for rows.Next() {
+			var sb model.StatBreakdown
+			if e := rows.Scan(&sb.Name, &sb.Count); e == nil {
+				result = append(result, sb)
+			}
+		}
+		mu.Lock()
+		countries = result
+		mu.Unlock()
+	}()
+
+	wg.Wait()
+
+	if firstErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query analytics"})
+		return
 	}
 
 	c.JSON(http.StatusOK, model.URLAnalyticsResponse{

@@ -78,13 +78,14 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Register API Routes with Rate Limiting (e.g. 30 requests per minute per IP)
+	// Register API Routes with per-route rate limits.
+	// POST /shorten is a write op (DB + Redis) — stricter 10 req/min per IP.
+	// GET  /analytics and /urls are read-only — 30 req/min per IP.
 	api := router.Group("/api")
-	api.Use(middleware.RateLimiter(rdb, 30, time.Minute))
 	{
-		api.POST("/shorten", h.Shorten)
-		api.GET("/analytics/:code", h.GetAnalytics)
-		api.GET("/urls", h.GetAllURLs)
+		api.POST("/shorten", middleware.RateLimiter(rdb, 10, time.Minute), h.Shorten)
+		api.GET("/analytics/:code", middleware.RateLimiter(rdb, 30, time.Minute), h.GetAnalytics)
+		api.GET("/urls", middleware.RateLimiter(rdb, 30, time.Minute), h.GetAllURLs)
 	}
 
 	// Serve static files if web directory is present (for local running without Nginx)
