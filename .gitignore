@@ -28,3 +28,6 @@ pgdata/
 .idea/
 .vscode/
 *.tmp
+
+# Local planning notes (kept out of git)
+ROADMAP.md
