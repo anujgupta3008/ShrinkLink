@@ -31,3 +31,12 @@ pgdata/
 
 # Local planning notes (kept out of git)
 ROADMAP.md
+
+# Secrets — NEVER commit these
+.env
+
+# MaxMind GeoIP database (binary, large file)
+*.mmdb
+
+# Go test/build cache
+backend/tmp/
