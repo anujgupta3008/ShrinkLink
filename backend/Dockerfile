@@ -18,11 +18,16 @@ FROM alpine:3.19
 
 RUN apk --no-cache add ca-certificates tzdata
 
-WORKDIR /root/
+WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/main .
 
+# Copy SQL migration files — the binary reads these at startup via MIGRATIONS_PATH
+COPY --from=builder /app/migrations ./migrations
+
 EXPOSE 8080
 
+# HEALTHCHECK added (Level 18 will add /healthz endpoint — this is a forward reference)
 CMD ["./main"]
+
