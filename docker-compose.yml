@@ -9,7 +9,7 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: url_shortener
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -44,13 +44,14 @@ services:
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DB_NAME: url_shortener
       DB_SSLMODE: disable
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       BASE_URL: "http://localhost"  # Routes through Nginx load balancer
       GIN_MODE: release
+      MIGRATIONS_PATH: /app/migrations
     restart: unless-stopped
     depends_on:
       postgres:
@@ -69,13 +70,14 @@ services:
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DB_NAME: url_shortener
       DB_SSLMODE: disable
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       BASE_URL: "http://localhost"
       GIN_MODE: release
+      MIGRATIONS_PATH: /app/migrations
     restart: unless-stopped
     depends_on:
       postgres:
