@@ -1,3 +1,5 @@
+import { initAuth, login, logout, fetchWithAuth, currentUserToken } from './auth.js';
+
 // Configuration
 const API_BASE_URL = ''; // Empty string means requests are relative (routed through Nginx proxy)
 const HISTORY_KEY = 'shrinklink_history';
@@ -55,6 +57,33 @@ document.addEventListener('DOMContentLoaded', () => {
       destroyAllCharts();
     }
   });
+
+  // Auth Initialization
+  const btnLogin = document.getElementById('btn-login');
+  
+  initAuth((user) => {
+    if (user) {
+      btnLogin.innerHTML = `
+        <img src="${user.photoURL || ''}" alt="Avatar" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;">
+        Logout
+      `;
+      btnLogin.onclick = logout;
+      // Re-fetch history with authenticated context
+      fetchAllURLs();
+    } else {
+      btnLogin.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+          <polyline points="10 17 15 12 10 7"></polyline>
+          <line x1="15" y1="12" x2="3" y2="12"></line>
+        </svg>
+        Login
+      `;
+      btnLogin.onclick = login;
+      // Fetch public history / local history
+      fetchAllURLs();
+    }
+  });
 });
 
 // Shorten URL Handler
@@ -76,7 +105,7 @@ async function handleShorten(e) {
     btnSpan.textContent = 'Generating...';
     btnSubmit.disabled = true;
 
-    const response = await fetch(`${API_BASE_URL}/api/shorten`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/shorten`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody)
@@ -162,7 +191,7 @@ async function fetchAllURLs() {
   subtitle.textContent = 'Loading from database...';
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/urls`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/urls`);
     if (!response.ok) throw new Error('Failed to fetch URLs');
     const dbURLs = await response.json();
 
@@ -293,7 +322,7 @@ async function showAnalytics(code, longUrl) {
   analyticsModal.classList.remove('hidden');
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/analytics/${code}`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/analytics/${code}`);
     const data = await response.json();
 
     if (!response.ok) {

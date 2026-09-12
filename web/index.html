@@ -28,9 +28,20 @@
         </div>
         <h1>Shrink<span>Link</span></h1>
       </div>
-      <div class="status-badge">
+      <div class="status-badge" style="margin-right: 16px;">
         <span class="status-indicator"></span>
         <span class="status-text">Distributed System Online</span>
+      </div>
+      <div id="auth-section" class="auth-section">
+        <!-- Auth UI will be injected here -->
+        <button id="btn-login" class="btn btn-secondary btn-small">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+            <polyline points="10 17 15 12 10 7"></polyline>
+            <line x1="15" y1="12" x2="3" y2="12"></line>
+          </svg>
+          Login
+        </button>
       </div>
     </div>
   </header>
@@ -256,6 +267,6 @@
   <footer class="app-footer container">
     <p>Powered by stateless Go microservices, Redis caching-aside, and PostgreSQL persistence.</p>
   </footer>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
