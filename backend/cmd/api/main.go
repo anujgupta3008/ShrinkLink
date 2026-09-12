@@ -18,6 +18,8 @@ import (
 	"url-shortener/internal/idgen"
 	"url-shortener/internal/middleware"
 	"url-shortener/internal/redis"
+	"url-shortener/internal/repository"
+	"url-shortener/internal/service"
 	"url-shortener/internal/worker"
 )
 
@@ -62,10 +64,21 @@ func main() {
 	// 5. Initialize ID Allocator (Range size: 1000)
 	allocator := idgen.NewAllocator(rdb, 1000)
 
-	// 6. Initialize Handlers
-	h := handler.NewHandler(db, rdb, allocator, cfg.BaseURL)
+	// 5. Initialize Repositories
+	urlRepo := repository.NewURLRepository(db)
+	userRepo := repository.NewUserRepository(db)
+	analyticsRepo := repository.NewAnalyticsRepository(db)
 
-	// 7. Start Background Analytics Worker
+	// 6. Initialize Services
+	quotaService := service.NewQuotaService(rdb)
+	urlService := service.NewURLService(urlRepo, quotaService, allocator, rdb, cfg.BaseURL)
+	userService := service.NewUserService(userRepo, quotaService)
+	analyticsService := service.NewAnalyticsService(analyticsRepo, rdb)
+
+	// 7. Initialize Handlers
+	h := handler.NewHandler(urlService, analyticsService, userService, rdb, cfg.BaseURL)
+
+	// 8. Start Background Analytics Worker
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	// NOTE: workerCancel is NOT deferred here — it must be called explicitly after
 	// server.Shutdown() returns, so in-flight requests finish queuing analytics
