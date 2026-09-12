@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,11 +22,11 @@ import (
 )
 
 func main() {
-	log.Println("Starting Distributed URL Shortener Service...")
+	slog.Info("Starting Distributed URL Shortener Service...")
 
 	// 1. Load configuration
 	cfg := config.LoadConfig()
-	log.Printf("Loaded DB config - host: %s, port: %s, user: %s, name: %s", cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBName)
+	slog.Info("Config loaded", "db_host", cfg.DBHost, "db_port", cfg.DBPort, "db_name", cfg.DBName)
 
 	// Set Gin mode
 	if os.Getenv("GIN_MODE") == "release" {
@@ -38,24 +38,34 @@ func main() {
 	// 2. Connect to Redis
 	rdb, err := redis.NewClient(cfg)
 	if err != nil {
-		log.Fatalf("Critical error connecting to Redis: %v", err)
+		slog.Error("Critical error connecting to Redis", "err", err)
+		os.Exit(1)
 	}
-	log.Println("Successfully connected to Redis")
+	slog.Info("Successfully connected to Redis")
 
 	// 3. Connect to PostgreSQL
 	db, err := database.NewDB(cfg)
 	if err != nil {
-		log.Fatalf("Critical error connecting to Database: %v", err)
+		slog.Error("Critical error connecting to Database", "err", err)
+		os.Exit(1)
 	}
-	log.Println("Successfully connected to Database")
+	slog.Info("Successfully connected to Database")
 
-	// 4. Initialize ID Allocator (Range size: 1000)
+	// 4. Run versioned migrations (golang-migrate).
+	//    Applies any pending *.up.sql files from the migrations directory.
+	//    Safe to re-run — golang-migrate is idempotent (ErrNoChange is handled).
+	if err := db.RunMigrations(cfg.MigrationsPath); err != nil {
+		slog.Error("Failed to run database migrations", "err", err)
+		os.Exit(1)
+	}
+
+	// 5. Initialize ID Allocator (Range size: 1000)
 	allocator := idgen.NewAllocator(rdb, 1000)
 
-	// 5. Initialize Handlers
+	// 6. Initialize Handlers
 	h := handler.NewHandler(db, rdb, allocator, cfg.BaseURL)
 
-	// 6. Start Background Analytics Worker
+	// 7. Start Background Analytics Worker
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	// NOTE: workerCancel is NOT deferred here — it must be called explicitly after
 	// server.Shutdown() returns, so in-flight requests finish queuing analytics
@@ -64,18 +74,20 @@ func main() {
 	analyticsWorker := worker.NewAnalyticsWorker(db, rdb, "queue:analytics", 50, 2*time.Second)
 	go analyticsWorker.Start(workerCtx)
 
-	// 7. Setup HTTP Router
+	// 8. Setup HTTP Router
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 
-	// Enable CORS for frontend flexibility
+	// Enable CORS for frontend flexibility.
+	// NOTE: AllowOrigins is "*" for local development. This will be scoped to
+	// real domains in Level 15 (Security Hardening).
+	// NOTE: AllowCredentials MUST NOT be true with AllowOrigins "*" — browsers block it.
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
+		AllowOrigins:  []string{"*"},
+		AllowMethods:  []string{"GET", "POST", "OPTIONS"},
+		AllowHeaders:  []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders: []string{"Content-Length"},
+		MaxAge:        12 * time.Hour,
 	}))
 
 	// Register API Routes with per-route rate limits.
@@ -104,16 +116,17 @@ func main() {
 	// Redirection route
 	router.GET("/:code", h.Redirect)
 
-	// 8. Graceful HTTP Server Startup
+	// 9. Graceful HTTP Server Startup
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
 		Handler: router,
 	}
 
 	go func() {
-		log.Printf("HTTP Server is listening on port %s", cfg.Port)
+		slog.Info("HTTP Server listening", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Failed to listen and serve: %v", err)
+			slog.Error("Failed to listen and serve", "err", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -121,16 +134,17 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server gracefully...")
+	slog.Info("Shutting down server gracefully...")
 
 	// Timeout context for shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		slog.Error("Server forced to shutdown", "err", err)
+		os.Exit(1)
 	}
-	log.Println("HTTP server stopped. Draining analytics worker...")
+	slog.Info("HTTP server stopped. Draining analytics worker...")
 
 	// Cancel the worker now that the HTTP server is fully stopped —
 	// no new analytics events can be enqueued after this point.
@@ -139,5 +153,6 @@ func main() {
 	// Give the worker up to 3 seconds to flush its current batch to PostgreSQL.
 	time.Sleep(3 * time.Second)
 
-	log.Println("Server exiting")
+	slog.Info("Server exiting")
 }
+
