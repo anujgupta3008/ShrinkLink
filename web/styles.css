@@ -813,3 +813,41 @@ tr:hover td {
   color: var(--text-muted);
   margin-top: 2px;
 }
+
+/* ── Auth Section ──────────────────────────────────────── */
+.auth-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  font-size: 12px;
+  color: var(--text-main);
+}
+
+.plan-label {
+  font-weight: 600;
+}
+
+.usage-label {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ── Claim Button ──────────────────────────────────────── */
+.btn-claim {
+  color: var(--accent-color) !important;
+}
+
+.btn-claim:hover {
+  background: rgba(168, 85, 247, 0.15) !important;
+  color: #c084fc !important;
+}

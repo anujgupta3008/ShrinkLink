@@ -13,6 +13,9 @@ let charts = {
   os: null
 };
 
+// Track current user state
+let currentUser = null;
+
 // DOM Elements
 const shortenForm = document.getElementById('shorten-form');
 const longUrlInput = document.getElementById('long-url');
@@ -33,8 +36,6 @@ const statTargetUrl = document.getElementById('stat-target-url');
 
 // App Initialization
 document.addEventListener('DOMContentLoaded', () => {
-  fetchAllURLs(); // Fetch from DB on load instead of only relying on localStorage
-
   // Shorten URL Form Submission
   shortenForm.addEventListener('submit', handleShorten);
 
@@ -61,15 +62,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auth Initialization
   const btnLogin = document.getElementById('btn-login');
   
-  initAuth((user) => {
+  initAuth(async (user) => {
+    currentUser = user;
     if (user) {
       btnLogin.innerHTML = `
         <img src="${user.photoURL || ''}" alt="Avatar" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;">
         Logout
       `;
       btnLogin.onclick = logout;
-      // Re-fetch history with authenticated context
-      fetchAllURLs();
+      // Fetch user profile to show plan/quota info
+      fetchUserProfile();
     } else {
       btnLogin.innerHTML = `
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
@@ -80,11 +82,44 @@ document.addEventListener('DOMContentLoaded', () => {
         Login
       `;
       btnLogin.onclick = login;
-      // Fetch public history / local history
-      fetchAllURLs();
+      // Clear profile badge
+      const profileBadge = document.getElementById('profile-badge');
+      if (profileBadge) profileBadge.remove();
     }
+    // Re-fetch URLs with authenticated (or anonymous) context
+    fetchAllURLs();
   });
 });
+
+// Fetch User Profile (Level 5)
+async function fetchUserProfile() {
+  try {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/me`);
+    if (response.ok) {
+      const profile = await response.json();
+      showProfileBadge(profile);
+    }
+  } catch (err) {
+    console.warn('Could not fetch user profile:', err);
+  }
+}
+
+// Display user plan/quota badge in header
+function showProfileBadge(profile) {
+  let badge = document.getElementById('profile-badge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 'profile-badge';
+    badge.className = 'profile-badge';
+    const authSection = document.getElementById('auth-section');
+    authSection.insertBefore(badge, authSection.firstChild);
+  }
+  const planLabel = profile.plan === 'pro' ? '⚡ Pro' : '🆓 Free';
+  badge.innerHTML = `
+    <span class="plan-label">${planLabel}</span>
+    <span class="usage-label">${profile.usage.used}/${profile.usage.limit} links</span>
+  `;
+}
 
 // Shorten URL Handler
 async function handleShorten(e) {
@@ -133,6 +168,9 @@ async function handleShorten(e) {
     // Reset Form
     shortenForm.reset();
     fetchAllURLs(); // Re-fetch from DB to show new URL alongside existing ones
+
+    // Refresh profile if logged in (to update quota usage)
+    if (currentUser) fetchUserProfile();
   } catch (error) {
     alert(`Error: ${error.message}`);
   } finally {
@@ -202,11 +240,17 @@ async function fetchAllURLs() {
         shortURL:  item.short_url,
         longURL:   item.long_url,
         createdAt: item.created_at,
-        expiresAt: item.expires_at || null
+        expiresAt: item.expires_at || null,
+        clickCount: item.click_count || 0,
+        owned: true  // DB results are always "owned" by the current user
       });
     });
 
-    subtitle.textContent = `${dbURLs.length} URL${dbURLs.length !== 1 ? 's' : ''} in database`;
+    if (currentUser) {
+      subtitle.textContent = `${dbURLs.length} URL${dbURLs.length !== 1 ? 's' : ''} in your account`;
+    } else {
+      subtitle.textContent = 'Showing local session history';
+    }
   } catch (err) {
     console.warn('Could not fetch URLs from DB, falling back to localStorage:', err);
     subtitle.textContent = 'Showing local session history';
@@ -252,6 +296,20 @@ function renderHistory() {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
 
+    // Show claim button for anonymous links when user is logged in
+    const isAnonymous = !item.owned;
+    let claimBtn = '';
+    if (isAnonymous && currentUser) {
+      claimBtn = `<button class="btn-icon btn-claim" title="Claim this link" data-code="${item.shortCode}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="8.5" cy="7" r="4"></circle>
+          <line x1="20" y1="8" x2="20" y2="14"></line>
+          <line x1="23" y1="11" x2="17" y2="11"></line>
+        </svg>
+      </button>`;
+    }
+
     tr.innerHTML = `
       <td><a href="${item.shortURL}" target="_blank" class="short-link">${item.shortCode}</a></td>
       <td title="${item.longURL}"><a href="${item.longURL}" target="_blank" style="color: inherit; text-decoration: none;">${item.longURL}</a></td>
@@ -265,6 +323,7 @@ function renderHistory() {
             <line x1="6" y1="20" x2="6" y2="14"></line>
           </svg>
         </button>
+        ${claimBtn}
         <button class="btn-icon btn-delete" title="Remove locally" data-code="${item.shortCode}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"></polyline>
@@ -288,8 +347,48 @@ function renderHistory() {
       deleteFromHistory(code);
     });
 
+    // Claim button handler (Level 6)
+    const claimButton = tr.querySelector('.btn-claim');
+    if (claimButton) {
+      claimButton.addEventListener('click', async (e) => {
+        const code = e.currentTarget.getAttribute('data-code');
+        await claimLink(code);
+      });
+    }
+
     historyList.appendChild(tr);
   });
+}
+
+// Claim an anonymous link (Level 6)
+async function claimLink(shortCode) {
+  try {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ short_code: shortCode })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to claim link');
+    }
+
+    // Mark as owned in local storage
+    const history = getHistory();
+    const item = history.find(h => h.shortCode === shortCode);
+    if (item) {
+      item.owned = true;
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    }
+
+    // Refresh the list
+    fetchAllURLs();
+    alert('Link claimed successfully! It now belongs to your account.');
+  } catch (error) {
+    alert(`Claim failed: ${error.message}`);
+  }
 }
 
 // Analytics state for retry

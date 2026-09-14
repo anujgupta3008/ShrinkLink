@@ -59,6 +59,8 @@ type AnalyticsRecord struct {
 	UserAgent string    `json:"user_agent" db:"user_agent"`
 	Referrer  string    `json:"referrer" db:"referrer"`
 	Country   string    `json:"country" db:"country"`
+	Browser   string    `json:"browser" db:"browser"`
+	OS        string    `json:"os" db:"os"`
 }
 
 type ShortenRequest struct {
