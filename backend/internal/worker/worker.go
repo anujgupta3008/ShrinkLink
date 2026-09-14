@@ -8,26 +8,35 @@ import (
 	"strings"
 	"time"
 
-	"url-shortener/internal/database"
 	"url-shortener/internal/model"
 	"url-shortener/internal/redis"
+	"url-shortener/internal/repository"
 )
 
 type AnalyticsWorker struct {
-	db          *database.DB
-	redisClient *redis.Client
-	queueName   string
-	batchSize   int
-	flushInt    time.Duration
+	analyticsRepo repository.AnalyticsRepository
+	urlRepo       repository.URLRepository
+	redisClient   *redis.Client
+	queueName     string
+	batchSize     int
+	flushInt      time.Duration
 }
 
-func NewAnalyticsWorker(db *database.DB, rdb *redis.Client, queueName string, batchSize int, flushInterval time.Duration) *AnalyticsWorker {
+func NewAnalyticsWorker(
+	analyticsRepo repository.AnalyticsRepository,
+	urlRepo repository.URLRepository,
+	rdb *redis.Client,
+	queueName string,
+	batchSize int,
+	flushInterval time.Duration,
+) *AnalyticsWorker {
 	return &AnalyticsWorker{
-		db:          db,
-		redisClient: rdb,
-		queueName:   queueName,
-		batchSize:   batchSize,
-		flushInt:    flushInterval,
+		analyticsRepo: analyticsRepo,
+		urlRepo:       urlRepo,
+		redisClient:   rdb,
+		queueName:     queueName,
+		batchSize:     batchSize,
+		flushInt:      flushInterval,
 	}
 }
 
@@ -90,35 +99,40 @@ func (w *AnalyticsWorker) flush(events []model.ClickEvent) {
 
 	log.Printf("Flushing batch of %d analytics events to PostgreSQL...", len(events))
 
-	// Begin Transaction
-	tx, err := w.db.Begin()
-	if err != nil {
-		log.Printf("Failed to begin transaction for analytics flush: %v", err)
-		return
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(`
-		INSERT INTO analytics (short_code, click_time, ip_address, user_agent, referrer, country, browser, os)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`)
-	if err != nil {
-		log.Printf("Failed to prepare statement for analytics insert: %v", err)
-		return
-	}
-	defer stmt.Close()
+	var records []model.AnalyticsRecord
+	clickCounts := make(map[string]int)
 
 	for _, event := range events {
 		country := resolveCountry(event.IPAddress)
 		browser, os := ParseUserAgent(event.UserAgent)
-		_, err := stmt.Exec(event.ShortCode, event.ClickTime, event.IPAddress, event.UserAgent, event.Referrer, country, browser, os)
-		if err != nil {
-			log.Printf("Failed to insert analytics event: %v", err)
-		}
+		records = append(records, model.AnalyticsRecord{
+			ShortCode: event.ShortCode,
+			ClickTime: event.ClickTime,
+			IPAddress: event.IPAddress,
+			UserAgent: event.UserAgent,
+			Referrer:  event.Referrer,
+			Country:   country,
+			Browser:   browser,
+			OS:        os,
+		})
+		clickCounts[event.ShortCode]++
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("Failed to commit analytics transaction: %v", err)
+	ctx := context.Background()
+
+	// 1. Insert analytics records
+	if err := w.analyticsRepo.BulkInsert(ctx, records); err != nil {
+		log.Printf("Failed to insert analytics events: %v", err)
+	}
+
+	// 2. Batch update URL click_counts
+	if err := w.urlRepo.BulkIncrementClicks(ctx, clickCounts); err != nil {
+		log.Printf("Failed to bulk increment click counts: %v", err)
+	}
+
+	// 3. Decrement the Redis live click counters for the flushed amount
+	for code, count := range clickCounts {
+		w.redisClient.DecrBy(ctx, "clicks:"+code, int64(count))
 	}
 }
 

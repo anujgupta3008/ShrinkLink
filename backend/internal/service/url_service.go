@@ -141,8 +141,6 @@ func (s *URLService) Resolve(ctx context.Context, code string) (string, error) {
 		if val == "__NOT_FOUND__" {
 			return "", ErrURLNotFound
 		}
-		// Bump click counter asynchronously (best-effort)
-		go s.urlRepo.IncrementClickCount(context.Background(), code)
 		return val, nil
 	}
 
@@ -173,7 +171,6 @@ func (s *URLService) Resolve(ctx context.Context, code string) (string, error) {
 	}
 	s.rdb.Set(ctx, redisKey, url.LongURL, ttl)
 
-	go s.urlRepo.IncrementClickCount(context.Background(), code)
 	return url.LongURL, nil
 }
 
@@ -183,7 +180,10 @@ func (s *URLService) ListUserURLs(ctx context.Context, userID string) ([]*model.
 }
 
 // ClaimURL assigns ownership of an anonymous link to a user.
-func (s *URLService) ClaimURL(ctx context.Context, code, userID string) error {
+func (s *URLService) ClaimURL(ctx context.Context, code, userID string, plan model.Plan) error {
+	if err := s.quota.CheckAndReserveUser(ctx, userID, plan); err != nil {
+		return err
+	}
 	return s.urlRepo.ClaimURL(ctx, code, userID)
 }
 

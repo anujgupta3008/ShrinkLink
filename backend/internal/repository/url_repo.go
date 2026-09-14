@@ -16,6 +16,7 @@ type URLRepository interface {
 	GetByUserID(ctx context.Context, userID string) ([]*model.URL, error)
 	ClaimURL(ctx context.Context, code, userID string) error
 	IncrementClickCount(ctx context.Context, code string) error
+	BulkIncrementClicks(ctx context.Context, clickMap map[string]int) error
 	AliasExists(ctx context.Context, code string) (bool, error)
 }
 
@@ -97,6 +98,33 @@ func (r *postgresURLRepo) IncrementClickCount(ctx context.Context, code string) 
 		`UPDATE urls SET click_count = click_count + 1 WHERE short_code = $1`, code,
 	)
 	return err
+}
+
+// BulkIncrementClicks performs a single batched UPDATE for multiple short codes.
+func (r *postgresURLRepo) BulkIncrementClicks(ctx context.Context, clickMap map[string]int) error {
+	if len(clickMap) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("url_repo.BulkIncrementClicks begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, `UPDATE urls SET click_count = click_count + $1 WHERE short_code = $2`)
+	if err != nil {
+		return fmt.Errorf("url_repo.BulkIncrementClicks prepare: %w", err)
+	}
+	defer stmt.Close()
+
+	for code, count := range clickMap {
+		if _, err := stmt.ExecContext(ctx, count, code); err != nil {
+			return fmt.Errorf("url_repo.BulkIncrementClicks exec: %w", err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // AliasExists reports whether a short code is already taken.
