@@ -52,6 +52,7 @@ services:
       BASE_URL: "http://localhost"  # Routes through Nginx load balancer
       GIN_MODE: release
       MIGRATIONS_PATH: /app/migrations
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-shrink-link-5418e}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -78,6 +79,7 @@ services:
       BASE_URL: "http://localhost"
       GIN_MODE: release
       MIGRATIONS_PATH: /app/migrations
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-shrink-link-5418e}
     restart: unless-stopped
     depends_on:
       postgres:

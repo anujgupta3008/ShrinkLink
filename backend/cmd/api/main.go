@@ -10,8 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	firebase "firebase.google.com/go/v4"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"google.golang.org/api/option"
 	"url-shortener/internal/config"
 	"url-shortener/internal/database"
 	"url-shortener/internal/handler"
@@ -61,33 +63,61 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 5. Initialize ID Allocator (Range size: 1000)
+	// 5. Initialize Firebase Auth Client
+	//    Uses GOOGLE_APPLICATION_CREDENTIALS env var for service account JSON,
+	//    or falls back to Application Default Credentials (ADC) in GCP.
+	//    If FIREBASE_SERVICE_ACCOUNT_PATH is set, it takes priority.
+	var firebaseApp *firebase.App
+	saPath := os.Getenv("FIREBASE_SERVICE_ACCOUNT_PATH")
+	if saPath != "" {
+		firebaseApp, err = firebase.NewApp(context.Background(), nil, option.WithCredentialsFile(saPath))
+	} else if cfg.FirebaseProjectID != "" {
+		// In production on GCP, ADC will auto-resolve.
+		// For local dev without a service account file, specify the project ID.
+		firebaseApp, err = firebase.NewApp(context.Background(), &firebase.Config{
+			ProjectID: cfg.FirebaseProjectID,
+		})
+	} else {
+		firebaseApp, err = firebase.NewApp(context.Background(), nil)
+	}
+	if err != nil {
+		slog.Error("Failed to initialize Firebase app", "err", err)
+		os.Exit(1)
+	}
+	authClient, err := firebaseApp.Auth(context.Background())
+	if err != nil {
+		slog.Error("Failed to initialize Firebase Auth client", "err", err)
+		os.Exit(1)
+	}
+	slog.Info("Firebase Auth client initialized")
+
+	// 6. Initialize ID Allocator (Range size: 1000)
 	allocator := idgen.NewAllocator(rdb, 1000)
 
-	// 5. Initialize Repositories
+	// 7. Initialize Repositories
 	urlRepo := repository.NewURLRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	analyticsRepo := repository.NewAnalyticsRepository(db)
 
-	// 6. Initialize Services
+	// 8. Initialize Services
 	quotaService := service.NewQuotaService(rdb)
 	urlService := service.NewURLService(urlRepo, quotaService, allocator, rdb, cfg.BaseURL)
 	userService := service.NewUserService(userRepo, quotaService)
 	analyticsService := service.NewAnalyticsService(analyticsRepo, rdb)
 
-	// 7. Initialize Handlers
+	// 9. Initialize Handlers
 	h := handler.NewHandler(urlService, analyticsService, userService, rdb, cfg.BaseURL)
 
-	// 8. Start Background Analytics Worker
+	// 10. Start Background Analytics Worker
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	// NOTE: workerCancel is NOT deferred here — it must be called explicitly after
 	// server.Shutdown() returns, so in-flight requests finish queuing analytics
 	// events before the worker stops consuming them.
 
-	analyticsWorker := worker.NewAnalyticsWorker(db, rdb, "queue:analytics", 50, 2*time.Second)
+	analyticsWorker := worker.NewAnalyticsWorker(analyticsRepo, urlRepo, rdb, "queue:analytics", 50, 2*time.Second)
 	go analyticsWorker.Start(workerCtx)
 
-	// 8. Setup HTTP Router
+	// 11. Setup HTTP Router
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 
@@ -103,14 +133,26 @@ func main() {
 		MaxAge:        12 * time.Hour,
 	}))
 
-	// Register API Routes with per-route rate limits.
-	// POST /shorten is a write op (DB + Redis) — stricter 10 req/min per IP.
-	// GET  /analytics and /urls are read-only — 30 req/min per IP.
+	// Register API Routes
+	//
+	// Auth strategy:
+	//   - OptionalAuth: Token verified if present → sets userID in context.
+	//                   No token → proceeds as anonymous.
+	//   - RequiredAuth: Token must be present and valid → 401 otherwise.
+	//
+	optionalAuth := middleware.FirebaseAuth(authClient, userService, rdb, false)
+	requiredAuth := middleware.FirebaseAuth(authClient, userService, rdb, true)
+
 	api := router.Group("/api")
 	{
-		api.POST("/shorten", middleware.RateLimiter(rdb, 10, time.Minute), h.Shorten)
-		api.GET("/analytics/:code", middleware.RateLimiter(rdb, 30, time.Minute), h.GetAnalytics)
-		api.GET("/urls", middleware.RateLimiter(rdb, 30, time.Minute), h.GetAllURLs)
+		// Public routes with optional auth (anonymous users can still shorten)
+		api.POST("/shorten", optionalAuth, middleware.RateLimiter(rdb, 10, time.Minute), h.Shorten)
+		api.GET("/analytics/:code", optionalAuth, middleware.RateLimiter(rdb, 30, time.Minute), h.GetAnalytics)
+		api.GET("/urls", optionalAuth, middleware.RateLimiter(rdb, 30, time.Minute), h.GetAllURLs)
+
+		// Protected routes (require valid Firebase token)
+		api.GET("/me", requiredAuth, h.GetMe)
+		api.POST("/claim", requiredAuth, h.ClaimURL)
 	}
 
 	// Serve static files if web directory is present (for local running without Nginx)
@@ -119,17 +161,19 @@ func main() {
 		router.StaticFile("/index.html", "web/index.html")
 		router.StaticFile("/styles.css", "web/styles.css")
 		router.StaticFile("/app.js", "web/app.js")
+		router.StaticFile("/auth.js", "web/auth.js")
 	} else if _, err := os.Stat("../web"); err == nil {
 		router.StaticFile("/", "../web/index.html")
 		router.StaticFile("/index.html", "../web/index.html")
 		router.StaticFile("/styles.css", "../web/styles.css")
 		router.StaticFile("/app.js", "../web/app.js")
+		router.StaticFile("/auth.js", "../web/auth.js")
 	}
 
-	// Redirection route
+	// Redirection route (public — no auth needed)
 	router.GET("/:code", h.Redirect)
 
-	// 9. Graceful HTTP Server Startup
+	// 12. Graceful HTTP Server Startup
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
 		Handler: router,
@@ -168,4 +212,3 @@ func main() {
 
 	slog.Info("Server exiting")
 }
-
