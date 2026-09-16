@@ -147,12 +147,13 @@ func main() {
 	{
 		// Public routes with optional auth (anonymous users can still shorten)
 		api.POST("/shorten", optionalAuth, middleware.RateLimiter(rdb, 10, time.Minute), h.Shorten)
-		api.GET("/analytics/:code", optionalAuth, middleware.RateLimiter(rdb, 30, time.Minute), h.GetAnalytics)
 		api.GET("/urls", optionalAuth, middleware.RateLimiter(rdb, 30, time.Minute), h.GetAllURLs)
 
 		// Protected routes (require valid Firebase token)
+		api.GET("/analytics/:code", requiredAuth, middleware.RateLimiter(rdb, 30, time.Minute), h.GetAnalytics)
 		api.GET("/me", requiredAuth, h.GetMe)
 		api.POST("/claim", requiredAuth, h.ClaimURL)
+		api.POST("/upgrade", requiredAuth, h.UpgradePlan)
 	}
 
 	// Serve static files if web directory is present (for local running without Nginx)

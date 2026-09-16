@@ -76,8 +76,15 @@ func (h *Handler) Shorten(c *gin.Context) {
 	})
 
 	if err != nil {
-		if errors.Is(err, service.ErrAliasInUse) || errors.Is(err, service.ErrInvalidAlias) || errors.Is(err, service.ErrQuotaExceeded) {
+		if errors.Is(err, service.ErrAliasInUse) || errors.Is(err, service.ErrInvalidAlias) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, service.ErrQuotaExceeded) {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error":   "quota exceeded",
+				"message": "You have reached your monthly link creation limit. Upgrade to Pro for 500 links/month.",
+			})
 			return
 		}
 		slog.Error("Failed to shorten URL", "err", err)
@@ -148,11 +155,19 @@ func (h *Handler) queueAnalytics(code string, c *gin.Context) {
 // ---------------------------------------------------------------------------
 
 // GetAnalytics returns analytics for a short code.
+// Level 8: Requires authentication + link ownership.
 func (h *Handler) GetAnalytics(c *gin.Context) {
 	code := c.Param("code")
 	ctx := c.Request.Context()
 
-	// Verify URL exists
+	// 1. Require authentication
+	userID, authenticated := middleware.GetUserID(c)
+	if !authenticated {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "login required to view analytics"})
+		return
+	}
+
+	// 2. Verify URL exists
 	url, err := h.urlService.GetByCode(ctx, code)
 	if err != nil {
 		slog.Error("Failed to fetch URL for analytics", "err", err)
@@ -161,6 +176,12 @@ func (h *Handler) GetAnalytics(c *gin.Context) {
 	}
 	if url == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
+		return
+	}
+
+	// 3. Verify ownership
+	if url.UserID == nil || *url.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "you do not own this link. Claim it first to view analytics."})
 		return
 	}
 
@@ -295,7 +316,10 @@ func (h *Handler) ClaimURL(c *gin.Context) {
 
 	if err := h.urlService.ClaimURL(c.Request.Context(), req.ShortCode, userID, userPlan); err != nil {
 		if errors.Is(err, service.ErrQuotaExceeded) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error":   "quota exceeded",
+				"message": "You have reached your monthly link limit. Upgrade to Pro for more.",
+			})
 			return
 		}
 		slog.Error("Failed to claim URL", "err", err)
@@ -304,6 +328,49 @@ func (h *Handler) ClaimURL(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "link claimed successfully", "short_code": req.ShortCode})
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/upgrade — Switch plan (Level 7)
+// ---------------------------------------------------------------------------
+
+// UpgradePlan switches the authenticated user's plan.
+// For now this is a direct toggle (no payment). Payment integration comes in Level 13.
+func (h *Handler) UpgradePlan(c *gin.Context) {
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+
+	var req struct {
+		Plan string `json:"plan" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	newPlan := model.Plan(req.Plan)
+	if newPlan != model.PlanFree && newPlan != model.PlanPro {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan, must be 'free' or 'pro'"})
+		return
+	}
+
+	if err := h.userService.UpgradePlan(c.Request.Context(), userID, newPlan); err != nil {
+		slog.Error("Failed to upgrade plan", "err", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update plan"})
+		return
+	}
+
+	// Invalidate the user-sync cache so the next request picks up the new plan
+	h.redisClient.Del(c.Request.Context(), "user_sync:"+c.GetString("firebaseUID"))
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "plan updated successfully",
+		"plan":    newPlan,
+		"limit":   model.PlanLimits[newPlan],
+	})
 }
 
 // Basic helper to extract hostname from referrer URL
