@@ -115,9 +115,21 @@ function showProfileBadge(profile) {
     authSection.insertBefore(badge, authSection.firstChild);
   }
   const planLabel = profile.plan === 'pro' ? '⚡ Pro' : '🆓 Free';
+  const usagePercent = Math.round((profile.usage.used / profile.usage.limit) * 100);
+  const barColor = usagePercent >= 90 ? 'var(--error, #ef4444)' : usagePercent >= 70 ? '#f59e0b' : 'var(--accent, #a855f7)';
+  
+  let upgradeBtn = '';
+  if (profile.plan === 'free') {
+    upgradeBtn = `<button class="btn-upgrade" onclick="upgradePlan('pro')">⚡ Upgrade to Pro</button>`;
+  }
+
   badge.innerHTML = `
     <span class="plan-label">${planLabel}</span>
     <span class="usage-label">${profile.usage.used}/${profile.usage.limit} links</span>
+    <div class="usage-bar-container">
+      <div class="usage-bar" style="width: ${usagePercent}%; background: ${barColor}"></div>
+    </div>
+    ${upgradeBtn}
   `;
 }
 
@@ -149,7 +161,13 @@ async function handleShorten(e) {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to shorten URL');
+      // Level 7: Show quota upgrade prompt on 429
+      if (response.status === 429 && data.message) {
+        showToast(data.message, 'warning');
+      } else {
+        showToast(data.error || 'Failed to shorten URL', 'error');
+      }
+      return;
     }
 
     // Display Result
@@ -172,7 +190,7 @@ async function handleShorten(e) {
     // Refresh profile if logged in (to update quota usage)
     if (currentUser) fetchUserProfile();
   } catch (error) {
-    alert(`Error: ${error.message}`);
+    showToast(`Error: ${error.message}`, 'error');
   } finally {
     btnSpan.textContent = 'Generate Short URL';
     btnSubmit.disabled = false;
@@ -385,9 +403,9 @@ async function claimLink(shortCode) {
 
     // Refresh the list
     fetchAllURLs();
-    alert('Link claimed successfully! It now belongs to your account.');
+    showToast('Link claimed successfully! It now belongs to your account.', 'success');
   } catch (error) {
-    alert(`Claim failed: ${error.message}`);
+    showToast(`Claim failed: ${error.message}`, 'error');
   }
 }
 
@@ -425,6 +443,19 @@ async function showAnalytics(code, longUrl) {
     const data = await response.json();
 
     if (!response.ok) {
+      // Level 8: Handle auth/ownership errors gracefully
+      if (response.status === 401) {
+        modalLoading.classList.add('hidden');
+        modalErrorMsg.textContent = 'Login required to view analytics. Please sign in first.';
+        modalError.classList.remove('hidden');
+        return;
+      }
+      if (response.status === 403) {
+        modalLoading.classList.add('hidden');
+        modalErrorMsg.textContent = data.error || 'You do not own this link. Claim it first to view analytics.';
+        modalError.classList.remove('hidden');
+        return;
+      }
       throw new Error(data.error || 'Failed to fetch analytics');
     }
 
@@ -593,4 +624,69 @@ function renderHorizontalBarChart(canvasId, chartKey, data) {
       }
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Level 7 — Plan Upgrade
+// ---------------------------------------------------------------------------
+
+// Upgrade/downgrade the user's plan
+// Exposed globally for the onclick in the profile badge
+window.upgradePlan = async function(newPlan) {
+  try {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/upgrade`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: newPlan })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to upgrade plan');
+    }
+
+    showToast(`Plan updated to ${newPlan.toUpperCase()}! New limit: ${data.limit} links/month.`, 'success');
+    // Refresh profile badge with new plan info
+    fetchUserProfile();
+  } catch (error) {
+    showToast(`Upgrade failed: ${error.message}`, 'error');
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Toast Notification System
+// ---------------------------------------------------------------------------
+
+function showToast(message, type = 'info') {
+  // Remove existing toast if any
+  const existing = document.getElementById('toast-notification');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.id = 'toast-notification';
+  toast.className = `toast toast-${type}`;
+
+  const icons = {
+    success: '\u2705',
+    error: '\u274c',
+    warning: '\u26a0\ufe0f',
+    info: '\u2139\ufe0f'
+  };
+
+  toast.innerHTML = `
+    <span class="toast-icon">${icons[type] || icons.info}</span>
+    <span class="toast-message">${message}</span>
+    <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
+  `;
+
+  document.body.appendChild(toast);
+
+  // Animate in
+  requestAnimationFrame(() => toast.classList.add('toast-visible'));
+
+  // Auto-dismiss after 5s
+  setTimeout(() => {
+    toast.classList.remove('toast-visible');
+    setTimeout(() => toast.remove(), 300);
+  }, 5000);
 }
