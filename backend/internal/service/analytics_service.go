@@ -42,3 +42,13 @@ func (s *AnalyticsService) GetLiveCount(ctx context.Context, code string) (int64
 	}
 	return count, nil
 }
+
+// GetUniqueVisitors returns the HyperLogLog estimate of unique visitor IPs
+// for a given short code. Uses Redis PFCOUNT (Level 9).
+func (s *AnalyticsService) GetUniqueVisitors(ctx context.Context, code string) (int64, error) {
+	count, err := s.rdb.PFCount(ctx, "uv:"+code).Result()
+	if err != nil {
+		return 0, fmt.Errorf("analytics_service.GetUniqueVisitors: %w", err)
+	}
+	return count, nil
+}

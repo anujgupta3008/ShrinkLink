@@ -16,6 +16,7 @@ import (
 	"google.golang.org/api/option"
 	"url-shortener/internal/config"
 	"url-shortener/internal/database"
+	"url-shortener/internal/geoip"
 	"url-shortener/internal/handler"
 	"url-shortener/internal/idgen"
 	"url-shortener/internal/middleware"
@@ -114,7 +115,12 @@ func main() {
 	// server.Shutdown() returns, so in-flight requests finish queuing analytics
 	// events before the worker stops consuming them.
 
-	analyticsWorker := worker.NewAnalyticsWorker(analyticsRepo, urlRepo, rdb, "queue:analytics", 50, 2*time.Second)
+	// Level 9: Initialize GeoIP resolver for real country lookups.
+	// Gracefully degrades if the DB file is absent (returns "Unknown").
+	geoResolver := geoip.NewResolver(cfg.GeoIPDBPath)
+	defer geoResolver.Close()
+
+	analyticsWorker := worker.NewAnalyticsWorker(analyticsRepo, urlRepo, rdb, geoResolver, "queue:analytics", 50, 2*time.Second)
 	go analyticsWorker.Start(workerCtx)
 
 	// 11. Setup HTTP Router
@@ -151,6 +157,8 @@ func main() {
 
 		// Protected routes (require valid Firebase token)
 		api.GET("/analytics/:code", requiredAuth, middleware.RateLimiter(rdb, 30, time.Minute), h.GetAnalytics)
+		api.GET("/live/:code", requiredAuth, h.GetLiveStats)
+		api.GET("/stream/:code", requiredAuth, h.StreamAnalytics)
 		api.GET("/me", requiredAuth, h.GetMe)
 		api.POST("/claim", requiredAuth, h.ClaimURL)
 		api.POST("/upgrade", requiredAuth, h.UpgradePlan)

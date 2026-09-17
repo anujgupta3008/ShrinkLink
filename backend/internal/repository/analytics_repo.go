@@ -36,8 +36,8 @@ func (r *postgresAnalyticsRepo) BulkInsert(ctx context.Context, records []model.
 	defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO analytics (short_code, click_time, ip_address, user_agent, referrer, country, browser, os)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO analytics (short_code, click_time, ip_address, user_agent, referrer, country, browser, os, device)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`)
 	if err != nil {
 		return fmt.Errorf("analytics_repo.BulkInsert prepare: %w", err)
@@ -47,7 +47,7 @@ func (r *postgresAnalyticsRepo) BulkInsert(ctx context.Context, records []model.
 	for _, rec := range records {
 		if _, err := stmt.ExecContext(ctx,
 			rec.ShortCode, rec.ClickTime, rec.IPAddress,
-			rec.UserAgent, rec.Referrer, rec.Country, rec.Browser, rec.OS,
+			rec.UserAgent, rec.Referrer, rec.Country, rec.Browser, rec.OS, rec.Device,
 		); err != nil {
 			return fmt.Errorf("analytics_repo.BulkInsert exec: %w", err)
 		}
@@ -222,6 +222,33 @@ func (r *postgresAnalyticsRepo) GetByCode(ctx context.Context, code string) (*mo
 		mu.Unlock()
 	}()
 
+	// Q7: Device breakdown (Level 9)
+	var devices []model.StatBreakdown
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		rows, e := r.db.QueryContext(ctx, `
+			SELECT COALESCE(NULLIF(device, ''), 'Unknown') as name, COUNT(*) as count
+			FROM analytics WHERE short_code = $1
+			GROUP BY name ORDER BY count DESC LIMIT 5
+		`, code)
+		if e != nil {
+			setErr(e)
+			return
+		}
+		defer rows.Close()
+		var result []model.StatBreakdown
+		for rows.Next() {
+			var sb model.StatBreakdown
+			if e := rows.Scan(&sb.Name, &sb.Count); e == nil {
+				result = append(result, sb)
+			}
+		}
+		mu.Lock()
+		devices = result
+		mu.Unlock()
+	}()
+
 	wg.Wait()
 	if firstErr != nil {
 		return nil, fmt.Errorf("analytics_repo.GetByCode: %w", firstErr)
@@ -235,5 +262,6 @@ func (r *postgresAnalyticsRepo) GetByCode(ctx context.Context, code string) (*mo
 		Browsers:       browsers,
 		OS:             osList,
 		Countries:      countries,
+		Devices:        devices,
 	}, nil
 }

@@ -10,11 +10,15 @@ let charts = {
   referrers: null,
   countries: null,
   browsers: null,
-  os: null
+  os: null,
+  devices: null
 };
 
 // Track current user state
 let currentUser = null;
+
+// Level 10: Active SSE connection for real-time updates
+let activeSSE = null;
 
 // DOM Elements
 const shortenForm = document.getElementById('shorten-form');
@@ -32,6 +36,7 @@ const closeModalBtn = document.getElementById('btn-close-modal');
 // Modal Stats
 const modalTitle = document.getElementById('modal-title');
 const statTotalClicks = document.getElementById('stat-total-clicks');
+const statUniqueVisitors = document.getElementById('stat-unique-visitors');
 const statTargetUrl = document.getElementById('stat-target-url');
 
 // App Initialization
@@ -49,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
   closeModalBtn.addEventListener('click', () => {
     analyticsModal.classList.add('hidden');
     destroyAllCharts();
+    closeSSE();
   });
 
   // Close Modal on Overlay Click
@@ -56,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === analyticsModal) {
       analyticsModal.classList.add('hidden');
       destroyAllCharts();
+      closeSSE();
     }
   });
 
@@ -460,6 +467,7 @@ async function showAnalytics(code, longUrl) {
     }
 
     statTotalClicks.textContent = data.total_clicks;
+    statUniqueVisitors.textContent = data.unique_visitors || 0;
 
     // Show content, hide spinner
     modalLoading.classList.add('hidden');
@@ -471,6 +479,10 @@ async function showAnalytics(code, longUrl) {
     renderPieChart('chart-countries', 'countries', data.countries || []);
     renderPieChart('chart-browsers', 'browsers', data.browsers || []);
     renderHorizontalBarChart('chart-os', 'os', data.os || []);
+    renderPieChart('chart-devices', 'devices', data.devices || []);
+
+    // Level 10: Start SSE live stream for real-time updates
+    startSSE(code);
 
   } catch (error) {
     // Show error panel inside modal instead of blocking alert()
@@ -488,6 +500,46 @@ function destroyAllCharts() {
       charts[key] = null;
     }
   });
+}
+
+// Level 10: Start SSE connection
+function startSSE(code) {
+  closeSSE(); // ensure previous connection is closed
+
+  // Since standard EventSource doesn't support Authorization header easily,
+  // we use a simple short-polling mechanism to the /api/live endpoint which is extremely fast (Redis only).
+  const liveIndicator = document.getElementById('live-indicator');
+  if (liveIndicator) liveIndicator.classList.add('active');
+
+  // Poll every 1.5 seconds
+  import('./auth.js').then(module => {
+    const fetchWithAuth = module.fetchWithAuth;
+    activeSSE = setInterval(async () => {
+      try {
+        const response = await fetchWithAuth(`${API_BASE_URL}/api/live/${code}`);
+        if (response.ok) {
+          const data = await response.json();
+          const statTotalClicks = document.getElementById('stat-total-clicks');
+          const statUniqueVisitors = document.getElementById('stat-unique-visitors');
+          
+          if (statTotalClicks) statTotalClicks.textContent = data.total_clicks;
+          if (statUniqueVisitors) statUniqueVisitors.textContent = data.unique_visitors;
+        }
+      } catch (err) {
+        console.error("Live stats error:", err);
+      }
+    }, 1500);
+  });
+}
+
+// Level 10: Close SSE connection
+function closeSSE() {
+  if (activeSSE) {
+    clearInterval(activeSSE);
+    activeSSE = null;
+  }
+  const liveIndicator = document.getElementById('live-indicator');
+  if (liveIndicator) liveIndicator.classList.remove('active');
 }
 
 // Chart rendering functions

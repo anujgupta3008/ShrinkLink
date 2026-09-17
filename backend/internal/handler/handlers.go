@@ -203,6 +203,10 @@ func (h *Handler) GetAnalytics(c *gin.Context) {
 	liveCount, _ := h.analyticsService.GetLiveCount(ctx, code)
 	analytics.TotalClicks += int(liveCount)
 
+	// Level 9: Add unique visitor count from HyperLogLog
+	uniqueVisitors, _ := h.analyticsService.GetUniqueVisitors(ctx, code)
+	analytics.UniqueVisitors = uniqueVisitors
+
 	c.JSON(http.StatusOK, analytics)
 }
 
@@ -371,6 +375,102 @@ func (h *Handler) UpgradePlan(c *gin.Context) {
 		"plan":    newPlan,
 		"limit":   model.PlanLimits[newPlan],
 	})
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/live/:code — Lightweight live stats (Level 10)
+// ---------------------------------------------------------------------------
+
+// GetLiveStats returns a quick snapshot of live click count + unique visitors
+// from Redis only (no Postgres hit). Used for polling clients.
+func (h *Handler) GetLiveStats(c *gin.Context) {
+	code := c.Param("code")
+	ctx := c.Request.Context()
+
+	// Auth + ownership check (same as full analytics)
+	userID, authenticated := middleware.GetUserID(c)
+	if !authenticated {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "login required"})
+		return
+	}
+
+	url, err := h.urlService.GetByCode(ctx, code)
+	if err != nil || url == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
+		return
+	}
+	if url.UserID == nil || *url.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not the owner"})
+		return
+	}
+
+	// Redis-only reads — sub-millisecond
+	liveClicks, _ := h.analyticsService.GetLiveCount(ctx, code)
+	dbClicks := url.ClickCount
+	uniqueVisitors, _ := h.analyticsService.GetUniqueVisitors(ctx, code)
+
+	c.JSON(http.StatusOK, gin.H{
+		"short_code":      code,
+		"total_clicks":    int64(dbClicks) + liveClicks,
+		"unique_visitors": uniqueVisitors,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/stream/:code — Server-Sent Events (Level 10)
+// ---------------------------------------------------------------------------
+
+// StreamAnalytics opens an SSE connection that pushes live click + unique
+// visitor counts every second. The connection stays open until the client
+// disconnects or the server shuts down.
+func (h *Handler) StreamAnalytics(c *gin.Context) {
+	code := c.Param("code")
+	ctx := c.Request.Context()
+
+	// Auth + ownership check
+	userID, authenticated := middleware.GetUserID(c)
+	if !authenticated {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "login required"})
+		return
+	}
+
+	url, err := h.urlService.GetByCode(ctx, code)
+	if err != nil || url == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
+		return
+	}
+	if url.UserID == nil || *url.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not the owner"})
+		return
+	}
+
+	// Set SSE headers
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no") // Disable nginx buffering
+	c.Writer.Flush()
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	dbClicks := url.ClickCount
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			liveClicks, _ := h.analyticsService.GetLiveCount(ctx, code)
+			uniqueVisitors, _ := h.analyticsService.GetUniqueVisitors(ctx, code)
+
+			data := fmt.Sprintf(`{"total_clicks":%d,"unique_visitors":%d}`,
+				int64(dbClicks)+liveClicks, uniqueVisitors)
+
+			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+			c.Writer.Flush()
+		}
+	}
 }
 
 // Basic helper to extract hostname from referrer URL

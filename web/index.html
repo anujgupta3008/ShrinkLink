@@ -211,9 +211,28 @@
               </svg>
             </div>
             <div class="stat-info">
+              <span class="stat-label">Unique Visitors</span>
+              <span class="stat-value" id="stat-unique-visitors">0</span>
+            </div>
+          </div>
+
+          <div class="stat-counter-card">
+            <div class="stat-icon url-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+            </div>
+            <div class="stat-info">
               <span class="stat-label">Target Destination</span>
               <span class="stat-value text-scroll" id="stat-target-url">-</span>
             </div>
+          </div>
+
+          <!-- Live indicator (Level 10) -->
+          <div class="live-indicator" id="live-indicator">
+            <span class="live-dot"></span> Live
           </div>
         </div>
 
@@ -256,6 +275,14 @@
             <h3>Operating Systems</h3>
             <div class="chart-wrapper">
               <canvas id="chart-os"></canvas>
+            </div>
+          </div>
+
+          <!-- Device Breakdown (Level 9) -->
+          <div class="chart-card">
+            <h3>Device Types</h3>
+            <div class="chart-wrapper">
+              <canvas id="chart-devices"></canvas>
             </div>
           </div>
         </div>

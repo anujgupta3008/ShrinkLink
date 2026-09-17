@@ -61,6 +61,7 @@ type AnalyticsRecord struct {
 	Country   string    `json:"country" db:"country"`
 	Browser   string    `json:"browser" db:"browser"`
 	OS        string    `json:"os" db:"os"`
+	Device    string    `json:"device" db:"device"` // Desktop, Mobile, Tablet, Bot
 }
 
 type ShortenRequest struct {
@@ -92,11 +93,13 @@ type StatBreakdown struct {
 type URLAnalyticsResponse struct {
 	ShortCode      string          `json:"short_code"`
 	TotalClicks    int             `json:"total_clicks"`
+	UniqueVisitors int64           `json:"unique_visitors"` // HyperLogLog estimate
 	ClicksOverTime []ClickStats    `json:"clicks_over_time"`
 	Referrers      []StatBreakdown `json:"referrers"`
 	Browsers       []StatBreakdown `json:"browsers"`
 	OS             []StatBreakdown `json:"os"`
 	Countries      []StatBreakdown `json:"countries"`
+	Devices        []StatBreakdown `json:"devices"` // Desktop, Mobile, Tablet, Bot
 }
 
 // MeResponse is returned by GET /api/me.
