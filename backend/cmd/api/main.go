@@ -154,6 +154,7 @@ func main() {
 		// Public routes with optional auth (anonymous users can still shorten)
 		api.POST("/shorten", optionalAuth, middleware.RateLimiter(rdb, 10, time.Minute), h.Shorten)
 		api.GET("/urls", optionalAuth, middleware.RateLimiter(rdb, 30, time.Minute), h.GetAllURLs)
+		api.GET("/qr/:code", h.GenerateQR)
 
 		// Protected routes (require valid Firebase token)
 		api.GET("/analytics/:code", requiredAuth, middleware.RateLimiter(rdb, 30, time.Minute), h.GetAnalytics)

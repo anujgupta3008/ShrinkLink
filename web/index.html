@@ -1,24 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Distributed URL Shortener - Analytics & Management</title>
+  <title>ShrinkLink - Free URL Shortener</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <!-- Chart.js for premium visualization -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <div class="glass-bg-container">
-    <div class="glow-orb orb-1"></div>
-    <div class="glow-orb orb-2"></div>
-  </div>
-
   <header class="app-header">
-    <div class="container">
+    <div class="container header-inner">
       <div class="brand">
         <div class="brand-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -28,127 +22,236 @@
         </div>
         <h1>Shrink<span>Link</span></h1>
       </div>
-      <div class="status-badge" style="margin-right: 16px;">
-        <span class="status-indicator"></span>
-        <span class="status-text">Distributed System Online</span>
+      
+      <div class="header-center hidden-mobile">
+        <nav class="nav-links">
+          <a href="#" class="nav-link">Features</a>
+          <a href="#" class="nav-link">Pricing</a>
+          <a href="#" class="nav-link">API</a>
+        </nav>
       </div>
-      <div id="auth-section" class="auth-section">
-        <!-- Auth UI will be injected here -->
-        <button id="btn-login" class="btn btn-secondary btn-small">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
-            <polyline points="10 17 15 12 10 7"></polyline>
-            <line x1="15" y1="12" x2="3" y2="12"></line>
+
+      <div class="header-actions">
+        <button id="btn-theme-toggle" class="btn-icon" aria-label="Toggle Theme">
+          <!-- Sun Icon (Default for Light Mode) -->
+          <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
           </svg>
-          Login
+          <!-- Moon Icon (Hidden by default) -->
+          <svg class="moon-icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
         </button>
+        <div id="auth-section" class="auth-section">
+          <button id="btn-login" class="btn btn-secondary btn-small">Sign in</button>
+        </div>
       </div>
     </div>
   </header>
 
-  <main class="app-main container">
-    <!-- Shortener Form Card -->
-    <section class="card shortener-card">
-      <h2>Shorten a Long URL</h2>
-      <p class="subtitle">Instantly generate compressed, high-availability redirects with real-time analytics.</p>
-      
-      <form id="shorten-form">
-        <div class="input-group">
-          <label for="long-url">Destination URL</label>
-          <div class="input-with-icon">
-            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="2" y1="12" x2="22" y2="12"></line>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-            </svg>
-            <input type="url" id="long-url" placeholder="https://example.com/very/long/path/to/resource" required>
-          </div>
-        </div>
+  <main class="app-main">
+    <!-- PUBLIC LANDING VIEW -->
+    <div id="public-view">
+      <section class="hero-section container">
+        <h1 class="hero-title">Short links, big results</h1>
+        <p class="hero-subtitle">A powerful URL shortener with real-time analytics and custom aliases. Completely free to start.</p>
+      </section>
+    </div>
 
-        <div class="form-grid">
+    <!-- DASHBOARD VIEW (Hidden until login) -->
+    <div id="dashboard-view" class="hidden container">
+      <div class="dashboard-header">
+        <div>
+          <h2>Your Dashboard</h2>
+          <p class="subtitle">Manage your links and view real-time analytics.</p>
+        </div>
+        <div class="quota-widget">
+          <div class="quota-text">
+            <span id="quota-usage">0</span> / <span id="quota-limit">20</span> links used this month
+            <span class="plan-badge" id="plan-badge">Free Plan</span>
+          </div>
+          <div class="quota-bar-bg">
+            <div class="quota-bar-fill" id="quota-bar-fill" style="width: 0%"></div>
+          </div>
+          <button class="btn btn-primary btn-small hidden" id="btn-upgrade">⚡ Upgrade to Pro</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SHARED SHORTENER WIDGET -->
+    <div class="container widget-container">
+      <section class="card shortener-card">
+        <form id="shorten-form">
           <div class="input-group">
-            <label for="custom-alias">Custom Alias <span class="optional">(Optional)</span></label>
-            <div class="input-with-icon">
-              <span class="prefix">/</span>
-              <input type="text" id="custom-alias" placeholder="my-promo" max="10">
+            <div class="input-with-icon large-input">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+              <input type="url" id="long-url" placeholder="Paste your long URL here..." required>
+              <button type="submit" class="btn btn-primary" id="btn-submit">Shorten</button>
             </div>
           </div>
-          
-          <div class="input-group">
-            <label for="expiry-seconds">Expires In <span class="optional">(Optional)</span></label>
-            <select id="expiry-seconds">
-              <option value="">Never Expires</option>
-              <option value="300">5 Minutes</option>
-              <option value="3600">1 Hour</option>
-              <option value="86400">1 Day</option>
-              <option value="604800">1 Week</option>
-              <option value="2592000">30 Days</option>
-            </select>
+
+          <!-- Advanced Options Toggle -->
+          <details class="advanced-options">
+            <summary>Advanced Options (Alias & Expiry)</summary>
+            <div class="form-grid options-grid">
+              <div class="input-group">
+                <label for="custom-alias">Custom Alias</label>
+                <div class="input-with-icon">
+                  <span class="prefix">/</span>
+                  <input type="text" id="custom-alias" placeholder="my-promo" max="10">
+                </div>
+              </div>
+              
+              <div class="input-group">
+                <label for="expiry-seconds">Expires In</label>
+                <select id="expiry-seconds">
+                  <option value="">Never Expires</option>
+                  <option value="300">5 Minutes</option>
+                  <option value="3600">1 Hour</option>
+                  <option value="86400">1 Day</option>
+                  <option value="604800">1 Week</option>
+                  <option value="2592000">30 Days</option>
+                </select>
+              </div>
+            </div>
+          </details>
+        </form>
+
+        <div id="result-box" class="result-box hidden">
+          <div class="result-label">Shortened URL Generated!</div>
+          <div class="result-display">
+            <input type="text" id="result-url" readonly>
+            <button class="btn btn-secondary btn-copy" id="btn-copy">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copy</span>
+            </button>
           </div>
         </div>
+      </section>
+    </div>
 
-        <button type="submit" class="btn btn-primary" id="btn-submit">
-          <span>Generate Short URL</span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-            <polyline points="12 5 19 12 12 19"></polyline>
-          </svg>
-        </button>
-      </form>
-
-      <div id="result-box" class="result-box hidden">
-        <div class="result-label">Shortened URL Generated!</div>
-        <div class="result-display">
-          <input type="text" id="result-url" readonly>
-          <button class="btn btn-secondary btn-copy" id="btn-copy">
+    <!-- LINKS HISTORY (Shared or Dashboard only) -->
+    <div class="container" id="history-container">
+      <section class="card history-card">
+        <div class="card-header">
+          <div>
+            <h2 id="history-title">Your Short Links</h2>
+            <p class="subtitle" id="history-subtitle">Log in to sync your links across devices.</p>
+          </div>
+          <button class="btn btn-secondary btn-small" id="btn-refresh">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
             </svg>
-            <span>Copy</span>
+            Refresh
           </button>
         </div>
-      </div>
-    </section>
-
-    <!-- URL History & Dashboard List -->
-    <section class="card history-card">
-      <div class="card-header">
-        <div>
-          <h2>Active Short Codes</h2>
-          <p class="subtitle" id="history-subtitle">Loading from database...</p>
+        
+        <div class="table-container">
+          <table id="history-table">
+            <thead>
+              <tr>
+                <th>Short Link</th>
+                <th>Destination URL</th>
+                <th>Created At</th>
+                <th>Status / Expiry</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="history-list">
+              <!-- Dynamically populated -->
+              <tr class="empty-state">
+                <td colspan="5">No shortened URLs stored locally in session yet. Create one above!</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <button class="btn btn-secondary btn-small" id="btn-refresh">
+      </section>
+    </div>
+  </main>
+
+  <!-- Pricing Modal (Level 13) -->
+  <div class="modal-overlay hidden" id="pricing-modal">
+    <div class="modal-container" style="max-width: 800px;">
+      <div class="modal-header">
+        <div>
+          <h2>Upgrade Your Plan</h2>
+          <p class="subtitle">Choose the plan that fits your needs.</p>
+        </div>
+        <button class="btn-close" id="btn-close-pricing">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="23 4 23 10 17 10"></polyline>
-            <polyline points="1 20 1 14 7 14"></polyline>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
-          Refresh
         </button>
       </div>
-      
-      <div class="table-container">
-        <table id="history-table">
-          <thead>
-            <tr>
-              <th>Short Link</th>
-              <th>Destination URL</th>
-              <th>Created At</th>
-              <th>Status / Expiry</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="history-list">
-            <!-- Dynamically populated -->
-            <tr class="empty-state">
-              <td colspan="5">No shortened URLs stored locally in session yet. Create one above!</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="modal-body form-grid">
+        <div class="card pricing-card">
+          <h3>Free</h3>
+          <div class="price"><span>$</span>0<span>/mo</span></div>
+          <ul class="pricing-features">
+            <li>20 links per month</li>
+            <li>Basic analytics</li>
+            <li>Community support</li>
+          </ul>
+          <button class="btn btn-secondary w-full" disabled>Current Plan</button>
+        </div>
+        <div class="card pricing-card pro-card" style="border-color: var(--primary-color);">
+          <h3>Pro</h3>
+          <div class="price"><span>$</span>9<span>/mo</span></div>
+          <ul class="pricing-features">
+            <li>500 links per month</li>
+            <li>Advanced real-time analytics</li>
+            <li>QR Code generation</li>
+            <li>Priority support</li>
+          </ul>
+          <button class="btn btn-primary w-full" id="btn-select-pro">Upgrade to Pro</button>
+        </div>
       </div>
-    </section>
-  </main>
+    </div>
+  </div>
+
+  <!-- QR Code Modal (Level 14) -->
+  <div class="modal-overlay hidden" id="qr-modal">
+    <div class="modal-container" style="max-width: 400px; text-align: center;">
+      <div class="modal-header" style="justify-content: center; position: relative;">
+        <h2>Your QR Code</h2>
+        <button class="btn-close" id="btn-close-qr" style="position: absolute; right: 1rem;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <img id="qr-image" src="" alt="QR Code" style="width: 256px; height: 256px; margin: 0 auto 1.5rem; display: block; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+        <a id="qr-download-link" href="#" download="qrcode.png" class="btn btn-primary w-full">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; margin-right: 0.5rem;">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Download PNG
+        </a>
+      </div>
+    </div>
+  </div>
 
   <!-- Real-Time Analytics Dashboard Modal -->
   <div class="modal-overlay hidden" id="analytics-modal">
@@ -238,47 +341,36 @@
 
         <!-- Charts Layout Grid -->
         <div class="charts-grid">
-          <!-- Click Over Time -->
           <div class="chart-card span-2">
             <h3>Clicks Over Time (Last 7 Days)</h3>
             <div class="chart-wrapper">
               <canvas id="chart-clicks-time"></canvas>
             </div>
           </div>
-
-          <!-- Referral Sources -->
           <div class="chart-card">
             <h3>Top Referrers</h3>
             <div class="chart-wrapper">
               <canvas id="chart-referrers"></canvas>
             </div>
           </div>
-
-          <!-- Geographic Countries -->
           <div class="chart-card">
             <h3>Geographic Distribution</h3>
             <div class="chart-wrapper">
               <canvas id="chart-countries"></canvas>
             </div>
           </div>
-
-          <!-- Browser Breakdown -->
           <div class="chart-card">
             <h3>Browser Distribution</h3>
             <div class="chart-wrapper">
               <canvas id="chart-browsers"></canvas>
             </div>
           </div>
-
-          <!-- OS Breakdown -->
           <div class="chart-card">
             <h3>Operating Systems</h3>
             <div class="chart-wrapper">
               <canvas id="chart-os"></canvas>
             </div>
           </div>
-
-          <!-- Device Breakdown (Level 9) -->
           <div class="chart-card">
             <h3>Device Types</h3>
             <div class="chart-wrapper">
@@ -291,8 +383,19 @@
     </div>
   </div>
 
-  <footer class="app-footer container">
-    <p>Powered by stateless Go microservices, Redis caching-aside, and PostgreSQL persistence.</p>
+  <footer class="app-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <h3>Shrink<span>Link</span></h3>
+        <p>The modern URL shortener for teams.</p>
+      </div>
+      <div class="footer-links">
+        <a href="#">Product</a>
+        <a href="#">Pricing</a>
+        <a href="#">API Documentation</a>
+        <a href="#">Terms of Service</a>
+      </div>
+    </div>
   </footer>
   <script type="module" src="app.js"></script>
 </body>

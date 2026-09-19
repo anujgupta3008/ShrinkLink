@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/skip2/go-qrcode"
 	"url-shortener/internal/middleware"
 	"url-shortener/internal/model"
 	"url-shortener/internal/redis"
@@ -480,4 +481,31 @@ func cleanReferrer(ref string) string {
 		return parts[1]
 	}
 	return ref
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/qr/:code — Level 14 (QR Code)
+// ---------------------------------------------------------------------------
+
+func (h *Handler) GenerateQR(c *gin.Context) {
+	code := c.Param("code")
+
+	// Verify URL exists
+	url, err := h.urlService.Resolve(c.Request.Context(), code)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "url not found"})
+		return
+	}
+
+	shortURL := fmt.Sprintf("%s/%s", h.baseURL, url.ShortCode)
+
+	// Generate QR Code PNG
+	png, err := qrcode.Encode(shortURL, qrcode.Medium, 256)
+	if err != nil {
+		slog.Error("Failed to generate QR", "err", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate qr"})
+		return
+	}
+
+	c.Data(http.StatusOK, "image/png", png)
 }

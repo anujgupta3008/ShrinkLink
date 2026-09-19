@@ -33,6 +33,30 @@ const historyList = document.getElementById('history-list');
 const analyticsModal = document.getElementById('analytics-modal');
 const closeModalBtn = document.getElementById('btn-close-modal');
 
+// Level 11/12 SPA & Theme Elements
+const publicView = document.getElementById('public-view');
+const dashboardView = document.getElementById('dashboard-view');
+const btnThemeToggle = document.getElementById('btn-theme-toggle');
+const sunIcon = document.querySelector('.sun-icon');
+const moonIcon = document.querySelector('.moon-icon');
+
+// Level 13/14 Modals
+const pricingModal = document.getElementById('pricing-modal');
+const closePricingBtn = document.getElementById('btn-close-pricing');
+const btnSelectPro = document.getElementById('btn-select-pro');
+
+const qrModal = document.getElementById('qr-modal');
+const closeQrBtn = document.getElementById('btn-close-qr');
+const qrImage = document.getElementById('qr-image');
+const qrDownloadLink = document.getElementById('qr-download-link');
+
+// Quota Elements
+const quotaUsage = document.getElementById('quota-usage');
+const quotaLimit = document.getElementById('quota-limit');
+const planBadge = document.getElementById('plan-badge');
+const quotaBarFill = document.getElementById('quota-bar-fill');
+const btnUpgrade = document.getElementById('btn-upgrade');
+
 // Modal Stats
 const modalTitle = document.getElementById('modal-title');
 const statTotalClicks = document.getElementById('stat-total-clicks');
@@ -41,6 +65,8 @@ const statTargetUrl = document.getElementById('stat-target-url');
 
 // App Initialization
 document.addEventListener('DOMContentLoaded', () => {
+  // Theme Toggle (Level 11)
+  btnThemeToggle.addEventListener('click', toggleTheme);
   // Shorten URL Form Submission
   shortenForm.addEventListener('submit', handleShorten);
 
@@ -57,7 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
     closeSSE();
   });
 
-  // Close Modal on Overlay Click
   analyticsModal.addEventListener('click', (e) => {
     if (e.target === analyticsModal) {
       analyticsModal.classList.add('hidden');
@@ -66,78 +91,153 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Level 13: Pricing Modal
+  closePricingBtn.addEventListener('click', () => pricingModal.classList.add('hidden'));
+  pricingModal.addEventListener('click', (e) => {
+    if (e.target === pricingModal) pricingModal.classList.add('hidden');
+  });
+  btnSelectPro.addEventListener('click', () => upgradePlan('pro'));
+
+  // Level 14: QR Modal
+  closeQrBtn.addEventListener('click', () => qrModal.classList.add('hidden'));
+  qrModal.addEventListener('click', (e) => {
+    if (e.target === qrModal) qrModal.classList.add('hidden');
+  });
+
   // Auth Initialization
   const btnLogin = document.getElementById('btn-login');
   
   initAuth(async (user) => {
     currentUser = user;
     if (user) {
+      // User is Logged In
       btnLogin.innerHTML = `
         <img src="${user.photoURL || ''}" alt="Avatar" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;">
         Logout
       `;
       btnLogin.onclick = logout;
+      
+      // SPA Toggle: Show Dashboard, Hide Public
+      publicView.classList.add('hidden');
+      dashboardView.classList.remove('hidden');
+
       // Fetch user profile to show plan/quota info
       fetchUserProfile();
     } else {
-      btnLogin.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
-          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
-          <polyline points="10 17 15 12 10 7"></polyline>
-          <line x1="15" y1="12" x2="3" y2="12"></line>
-        </svg>
-        Login
-      `;
+      // User is Anonymous
+      btnLogin.innerHTML = `Sign in`;
       btnLogin.onclick = login;
-      // Clear profile badge
-      const profileBadge = document.getElementById('profile-badge');
-      if (profileBadge) profileBadge.remove();
+      
+      // SPA Toggle: Show Public, Hide Dashboard
+      publicView.classList.remove('hidden');
+      dashboardView.classList.add('hidden');
     }
     // Re-fetch URLs with authenticated (or anonymous) context
     fetchAllURLs();
   });
 });
 
-// Fetch User Profile (Level 5)
+// Theme Toggle Logic
+function toggleTheme() {
+  const html = document.documentElement;
+  const currentTheme = html.getAttribute('data-theme');
+  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', newTheme);
+  
+  if (newTheme === 'dark') {
+    sunIcon.classList.add('hidden');
+    moonIcon.classList.remove('hidden');
+  } else {
+    sunIcon.classList.remove('hidden');
+    moonIcon.classList.add('hidden');
+  }
+}
+
+// Fetch User Profile (Level 5 / 12)
 async function fetchUserProfile() {
   try {
     const response = await fetchWithAuth(`${API_BASE_URL}/api/me`);
     if (response.ok) {
       const profile = await response.json();
-      showProfileBadge(profile);
+      updateDashboardQuota(profile);
     }
   } catch (err) {
     console.warn('Could not fetch user profile:', err);
   }
 }
 
-// Display user plan/quota badge in header
-function showProfileBadge(profile) {
-  let badge = document.getElementById('profile-badge');
-  if (!badge) {
-    badge = document.createElement('div');
-    badge.id = 'profile-badge';
-    badge.className = 'profile-badge';
-    const authSection = document.getElementById('auth-section');
-    authSection.insertBefore(badge, authSection.firstChild);
-  }
-  const planLabel = profile.plan === 'pro' ? '⚡ Pro' : '🆓 Free';
-  const usagePercent = Math.round((profile.usage.used / profile.usage.limit) * 100);
-  const barColor = usagePercent >= 90 ? 'var(--error, #ef4444)' : usagePercent >= 70 ? '#f59e0b' : 'var(--accent, #a855f7)';
+// Display user plan/quota badge in Dashboard Header
+function updateDashboardQuota(profile) {
+  const isPro = profile.plan === 'pro';
   
-  let upgradeBtn = '';
-  if (profile.plan === 'free') {
-    upgradeBtn = `<button class="btn-upgrade" onclick="upgradePlan('pro')">⚡ Upgrade to Pro</button>`;
+  planBadge.textContent = isPro ? 'Pro Plan' : 'Free Plan';
+  quotaUsage.textContent = profile.usage.used;
+  quotaLimit.textContent = profile.usage.limit;
+  
+  const usagePercent = Math.min(100, Math.round((profile.usage.used / profile.usage.limit) * 100));
+  quotaBarFill.style.width = `${usagePercent}%`;
+  
+  const barColor = usagePercent >= 90 ? 'var(--danger-color)' : usagePercent >= 70 ? '#f59e0b' : 'var(--primary-color)';
+  quotaBarFill.style.backgroundColor = barColor;
+  
+  if (!isPro) {
+    btnUpgrade.classList.remove('hidden');
+    btnUpgrade.onclick = () => pricingModal.classList.remove('hidden');
+  } else {
+    btnUpgrade.classList.add('hidden');
   }
+}
 
-  badge.innerHTML = `
-    <span class="plan-label">${planLabel}</span>
-    <span class="usage-label">${profile.usage.used}/${profile.usage.limit} links</span>
-    <div class="usage-bar-container">
-      <div class="usage-bar" style="width: ${usagePercent}%; background: ${barColor}"></div>
-    </div>
-    ${upgradeBtn}
-  `;
+// Upgrade Plan API (Level 13)
+async function upgradePlan(planName) {
+  if (!currentUser) return;
+  const token = await currentUserToken();
+  if (!token) return;
+
+  btnSelectPro.textContent = 'Upgrading...';
+  btnSelectPro.disabled = true;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/upgrade`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ plan: planName })
+    });
+
+    if (response.ok) {
+      // Re-fetch profile to update quota UI
+      fetchUserProfile();
+      pricingModal.classList.add('hidden');
+      showToast('Successfully upgraded to Pro!');
+    } else {
+      const data = await response.json();
+      alert(`Upgrade failed: ${data.error}`);
+    }
+  } catch (err) {
+    console.error('Upgrade request failed:', err);
+  } finally {
+    btnSelectPro.textContent = 'Upgrade to Pro';
+    btnSelectPro.disabled = false;
+  }
+}
+
+// Show Toast Notification (Helper)
+function showToast(message) {
+  const toast = document.createElement('div');
+  toast.textContent = message;
+  toast.style.position = 'fixed';
+  toast.style.bottom = '20px';
+  toast.style.right = '20px';
+  toast.style.backgroundColor = 'var(--success-color)';
+  toast.style.color = 'white';
+  toast.style.padding = '1rem';
+  toast.style.borderRadius = 'var(--radius-md)';
+  toast.style.zIndex = '1000';
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
 }
 
 // Shorten URL Handler
@@ -349,6 +449,18 @@ function renderHistory() {
           </svg>
         </button>
         ${claimBtn}
+        <button class="btn-icon btn-qr" title="Generate QR Code" data-code="${item.shortCode}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+            <rect x="5" y="5" width="3" height="3"></rect>
+            <rect x="16" y="5" width="3" height="3"></rect>
+            <rect x="16" y="16" width="3" height="3"></rect>
+            <rect x="5" y="16" width="3" height="3"></rect>
+          </svg>
+        </button>
         <button class="btn-icon btn-delete" title="Remove locally" data-code="${item.shortCode}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"></polyline>
@@ -370,6 +482,11 @@ function renderHistory() {
     tr.querySelector('.btn-delete').addEventListener('click', (e) => {
       const code = e.currentTarget.getAttribute('data-code');
       deleteFromHistory(code);
+    });
+
+    tr.querySelector('.btn-qr').addEventListener('click', (e) => {
+      const code = e.currentTarget.getAttribute('data-code');
+      showQRCode(code);
     });
 
     // Claim button handler (Level 6)
