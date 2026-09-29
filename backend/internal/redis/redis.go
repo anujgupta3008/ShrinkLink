@@ -35,3 +35,8 @@ func NewClient(cfg *config.Config) (*Client, error) {
 
 	return &Client{rdb}, nil
 }
+
+// Ping checks Redis connectivity. Used by the /readyz health endpoint.
+func (c *Client) Ping(ctx context.Context) error {
+	return c.Client.Ping(ctx).Err()
+}

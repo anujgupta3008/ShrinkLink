@@ -21,6 +21,10 @@ type Config struct {
 	MigrationsPath    string // MigrationsPath is the path to the SQL migration files.
 	FirebaseProjectID string // FirebaseProjectID is the Firebase project ID for auth (Level 5).
 	GeoIPDBPath       string // GeoIPDBPath is the path to the MaxMind GeoLite2 mmdb file (Level 9).
+	AllowedOrigins    string // AllowedOrigins is a comma-separated list of allowed CORS origins (Level 15).
+	ReadTimeout       string // ReadTimeout for HTTP server (Level 18).
+	WriteTimeout      string // WriteTimeout for HTTP server (Level 18).
+	IdleTimeout       string // IdleTimeout for HTTP server (Level 18).
 }
 
 func LoadConfig() *Config {
@@ -40,6 +44,10 @@ func LoadConfig() *Config {
 		MigrationsPath:    getEnv("MIGRATIONS_PATH", "migrations"),
 		FirebaseProjectID: getEnv("FIREBASE_PROJECT_ID", ""),
 		GeoIPDBPath:       getEnv("GEOIP_DB_PATH", ""),
+		AllowedOrigins:    getEnv("ALLOWED_ORIGINS", "http://localhost,http://localhost:8080,http://localhost:8000"),
+		ReadTimeout:       getEnv("READ_TIMEOUT", "10s"),
+		WriteTimeout:      getEnv("WRITE_TIMEOUT", "30s"),
+		IdleTimeout:       getEnv("IDLE_TIMEOUT", "120s"),
 	}
 }
 

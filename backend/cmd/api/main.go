@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"url-shortener/internal/redis"
 	"url-shortener/internal/repository"
 	"url-shortener/internal/service"
+	"url-shortener/internal/urlvalidator"
 	"url-shortener/internal/worker"
 )
 
@@ -106,8 +108,11 @@ func main() {
 	userService := service.NewUserService(userRepo, quotaService)
 	analyticsService := service.NewAnalyticsService(analyticsRepo, rdb)
 
-	// 9. Initialize Handlers
-	h := handler.NewHandler(urlService, analyticsService, userService, rdb, cfg.BaseURL)
+	// 9. Initialize URL Validator (Level 15: SSRF protection)
+	urlValidator := urlvalidator.NewValidator(cfg.BaseURL)
+
+	// 10. Initialize Handlers
+	h := handler.NewHandler(urlService, analyticsService, userService, rdb, cfg.BaseURL, urlValidator)
 
 	// 10. Start Background Analytics Worker
 	workerCtx, workerCancel := context.WithCancel(context.Background())
@@ -127,17 +132,24 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 
-	// Enable CORS for frontend flexibility.
-	// NOTE: AllowOrigins is "*" for local development. This will be scoped to
-	// real domains in Level 15 (Security Hardening).
-	// NOTE: AllowCredentials MUST NOT be true with AllowOrigins "*" — browsers block it.
+	// Level 15: Security headers on every response
+	router.Use(middleware.SecurityHeaders())
+
+	// Level 15: Scoped CORS — reads allowed origins from config.
+	// Replaces the old wildcard "*" which was unsafe with credentials.
+	allowedOrigins := strings.Split(cfg.AllowedOrigins, ",")
+	for i := range allowedOrigins {
+		allowedOrigins[i] = strings.TrimSpace(allowedOrigins[i])
+	}
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:  []string{"*"},
-		AllowMethods:  []string{"GET", "POST", "OPTIONS"},
-		AllowHeaders:  []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders: []string{"Content-Length"},
-		MaxAge:        12 * time.Hour,
+		AllowOrigins:     allowedOrigins,
+		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
 	}))
+
 
 	// Register API Routes
 	//
@@ -165,6 +177,24 @@ func main() {
 		api.POST("/upgrade", requiredAuth, h.UpgradePlan)
 	}
 
+	// Level 18: Health check endpoints (required by PaaS autoscalers/load balancers)
+	router.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	router.GET("/readyz", func(c *gin.Context) {
+		// Check DB connectivity
+		if err := db.Ping(); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "db": err.Error()})
+			return
+		}
+		// Check Redis connectivity
+		if err := rdb.Ping(c.Request.Context()); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "redis": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ready"})
+	})
+
 	// Serve static files if web directory is present (for local running without Nginx)
 	if _, err := os.Stat("web"); err == nil {
 		router.StaticFile("/", "web/index.html")
@@ -183,10 +213,27 @@ func main() {
 	// Redirection route (public — no auth needed)
 	router.GET("/:code", h.Redirect)
 
+	// Level 18: Parse HTTP server timeouts from config
+	readTimeout, _ := time.ParseDuration(cfg.ReadTimeout)
+	writeTimeout, _ := time.ParseDuration(cfg.WriteTimeout)
+	idleTimeout, _ := time.ParseDuration(cfg.IdleTimeout)
+	if readTimeout == 0 {
+		readTimeout = 10 * time.Second
+	}
+	if writeTimeout == 0 {
+		writeTimeout = 30 * time.Second
+	}
+	if idleTimeout == 0 {
+		idleTimeout = 120 * time.Second
+	}
+
 	// 12. Graceful HTTP Server Startup
 	server := &http.Server{
-		Addr:    ":" + cfg.Port,
-		Handler: router,
+		Addr:         ":" + cfg.Port,
+		Handler:      router,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
+		IdleTimeout:  idleTimeout,
 	}
 
 	go func() {

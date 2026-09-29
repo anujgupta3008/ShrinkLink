@@ -16,6 +16,7 @@ import (
 	"url-shortener/internal/model"
 	"url-shortener/internal/redis"
 	"url-shortener/internal/service"
+	"url-shortener/internal/urlvalidator"
 )
 
 type Handler struct {
@@ -24,6 +25,7 @@ type Handler struct {
 	userService      *service.UserService
 	redisClient      *redis.Client
 	baseURL          string
+	urlValidator     *urlvalidator.Validator
 }
 
 func NewHandler(
@@ -32,6 +34,7 @@ func NewHandler(
 	userService *service.UserService,
 	rdb *redis.Client,
 	baseURL string,
+	v *urlvalidator.Validator,
 ) *Handler {
 	return &Handler{
 		urlService:       urlService,
@@ -39,6 +42,7 @@ func NewHandler(
 		userService:      userService,
 		redisClient:      rdb,
 		baseURL:          baseURL,
+		urlValidator:     v,
 	}
 }
 
@@ -55,6 +59,14 @@ func (h *Handler) Shorten(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Level 15: Validate destination URL (SSRF protection, scheme check, loop detection)
+	if h.urlValidator != nil {
+		if err := h.urlValidator.Validate(req.LongURL); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsafe destination URL: %s", err.Error())})
+			return
+		}
 	}
 
 	// Read user ID and plan from Gin context (set by FirebaseAuth middleware)
@@ -141,8 +153,19 @@ func (h *Handler) queueAnalytics(code string, c *gin.Context) {
 		return
 	}
 
-	// LPUSH to analytics queue
 	ctx := context.Background()
+
+	// Level 18: Backpressure — cap analytics queue at 100k items.
+	// If the queue is full (DB is slow), drop the event rather than
+	// letting Redis memory grow unbounded under heavy load.
+	const maxQueueLen = 100_000
+	queueLen, _ := h.redisClient.LLen(ctx, "queue:analytics").Result()
+	if queueLen >= maxQueueLen {
+		slog.Warn("Analytics queue at capacity, dropping event", "queue_len", queueLen, "code", code)
+		return
+	}
+
+	// LPUSH to analytics queue
 	if err := h.redisClient.LPush(ctx, "queue:analytics", data).Err(); err != nil {
 		slog.Error("Failed to push click event to Redis queue", "err", err)
 	}
@@ -491,13 +514,13 @@ func (h *Handler) GenerateQR(c *gin.Context) {
 	code := c.Param("code")
 
 	// Verify URL exists
-	url, err := h.urlService.Resolve(c.Request.Context(), code)
+	_, err := h.urlService.Resolve(c.Request.Context(), code)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "url not found"})
 		return
 	}
 
-	shortURL := fmt.Sprintf("%s/%s", h.baseURL, url.ShortCode)
+	shortURL := fmt.Sprintf("%s/%s", h.baseURL, code)
 
 	// Generate QR Code PNG
 	png, err := qrcode.Encode(shortURL, qrcode.Medium, 256)
